@@ -7,6 +7,15 @@ function swapID(ref: string) {
   return `${line}#${next}`
 }
 
+function errorMessage(run: () => void) {
+  try {
+    run()
+    return ""
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
+}
+
 describe("tool.hashline", () => {
   test("hash computation is stable and 2-char alphabet encoded", () => {
     const a = hashlineID(1, "  const x = 1")
@@ -15,6 +24,15 @@ describe("tool.hashline", () => {
     expect(a).toBe(b)
     expect(a).toBe(c)
     expect(a).toMatch(/^[ZPMQVRWSNKTXJBYH]{2}$/)
+  })
+
+  test("low-signal lines mix line index into hash id", () => {
+    const a = hashlineID(1, "")
+    const b = hashlineID(2, "")
+    const c = hashlineID(1, "{}")
+    const d = hashlineID(2, "{}")
+    expect(a).not.toBe(b)
+    expect(c).not.toBe(d)
   })
 
   test("autocorrect strips copied hashline prefixes when enabled", () => {
@@ -39,6 +57,23 @@ describe("tool.hashline", () => {
     }
   })
 
+  test("default autocorrect does not rewrite non-prefix content", () => {
+    const result = applyHashlineEdits({
+      lines: ["a"],
+      trailing: false,
+      edits: [
+        {
+          type: "set_line",
+          line: hashlineRef(1, "a"),
+          text: "+a",
+        },
+      ],
+      autocorrect: true,
+      aggressiveAutocorrect: false,
+    })
+    expect(result.lines).toEqual(["+a"])
+  })
+
   test("parses strict LINE#ID references with tolerant extraction", () => {
     const ref = parseHashlineRef(">>> 12#ZP:const value = 1", "line")
     expect(ref.line).toBe(12)
@@ -48,11 +83,11 @@ describe("tool.hashline", () => {
     expect(() => parseHashlineRef("12#ab", "line")).toThrow("LINE#ID")
   })
 
-  test("aggregates mismatch errors with >>> context and retry refs", () => {
+  test("reports compact mismatch errors with retry anchors", () => {
     const lines = ["alpha", "beta", "gamma"]
     const wrong = swapID(hashlineRef(2, lines[1]))
 
-    expect(() =>
+    const message = errorMessage(() =>
       applyHashlineEdits({
         lines,
         trailing: false,
@@ -64,21 +99,12 @@ describe("tool.hashline", () => {
           },
         ],
       }),
-    ).toThrow("changed since last read")
+    )
 
-    expect(() =>
-      applyHashlineEdits({
-        lines,
-        trailing: false,
-        edits: [
-          {
-            type: "set_line",
-            line: wrong,
-            text: "BETA",
-          },
-        ],
-      }),
-    ).toThrow(">>> retry with")
+    expect(message).toContain("anchor mismatch")
+    expect(message).toContain("retry with")
+    expect(message).not.toContain(">>>")
+    expect(message.length).toBeLessThan(260)
   })
 
   test("applies batched line edits bottom-up for stable results", () => {

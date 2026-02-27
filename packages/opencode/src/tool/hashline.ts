@@ -8,6 +8,7 @@ export const HASHLINE_ALPHABET = "ZPMQVRWSNKTXJBYH"
 const HASHLINE_ID_LENGTH = 2
 const HASHLINE_ID_REGEX = new RegExp(`^[${HASHLINE_ALPHABET}]{${HASHLINE_ID_LENGTH}}$`)
 const HASHLINE_REF_REGEX = new RegExp(`(\\d+)#([${HASHLINE_ALPHABET}]{${HASHLINE_ID_LENGTH}})(?=$|\\s|:)`)
+const LOW_SIGNAL_CONTENT_RE = /^[^a-zA-Z0-9]+$/
 
 type TextValue = string | string[]
 
@@ -75,12 +76,18 @@ export const HashlineEdit = z.discriminatedUnion("type", [
 
 export type HashlineEdit = z.infer<typeof HashlineEdit>
 
+function isLowSignalContent(normalized: string) {
+  if (normalized.length === 0) return true
+  if (normalized.length <= 2) return true
+  return LOW_SIGNAL_CONTENT_RE.test(normalized)
+}
+
 export function hashlineID(lineNumber: number, line: string): string {
   let normalized = line
   if (normalized.endsWith("\r")) normalized = normalized.slice(0, -1)
   normalized = normalized.replace(/\s+/g, "")
-  void lineNumber
-  const hash = Bun.hash.xxHash32(normalized) & 0xff
+  const seed = isLowSignalContent(normalized) ? `${normalized}:${lineNumber}` : normalized
+  const hash = Bun.hash.xxHash32(seed) & 0xff
   const high = (hash >>> 4) & 0x0f
   const low = hash & 0x0f
   return `${HASHLINE_ALPHABET[high]}${HASHLINE_ALPHABET[low]}`
@@ -123,29 +130,29 @@ function toLines(text: TextValue) {
 }
 
 const HASHLINE_PREFIX_RE = /^\s*(?:>>>|>>)?\s*\d+#[ZPMQVRWSNKTXJBYH]{2}:/
-const DIFF_PLUS_RE = /^[+-](?![+-])/
+const WRAPPER_PREFIX_RE = /^\s*(?:>>>|>>)\s?/
+
+function stripByMajority(lines: string[], test: (line: string) => boolean, rewrite: (line: string) => string) {
+  const nonEmpty = lines.filter((line) => line.length > 0)
+  if (nonEmpty.length === 0) return lines
+
+  const matches = nonEmpty.filter(test).length
+  if (matches === 0 || matches < nonEmpty.length * 0.5) return lines
+
+  return lines.map(rewrite)
+}
 
 function stripNewLinePrefixes(lines: string[]) {
-  let hashPrefixCount = 0
-  let diffPlusCount = 0
-  let nonEmpty = 0
-  for (const line of lines) {
-    if (line.length === 0) continue
-    nonEmpty++
-    if (HASHLINE_PREFIX_RE.test(line)) hashPrefixCount++
-    if (DIFF_PLUS_RE.test(line)) diffPlusCount++
-  }
-  if (nonEmpty === 0) return lines
-
-  const stripHash = hashPrefixCount > 0 && hashPrefixCount >= nonEmpty * 0.5
-  const stripPlus = !stripHash && diffPlusCount > 0 && diffPlusCount >= nonEmpty * 0.5
-  if (!stripHash && !stripPlus) return lines
-
-  return lines.map((line) => {
-    if (stripHash) return line.replace(HASHLINE_PREFIX_RE, "")
-    if (stripPlus) return line.replace(DIFF_PLUS_RE, "")
-    return line
-  })
+  const stripped = stripByMajority(
+    lines,
+    (line) => HASHLINE_PREFIX_RE.test(line),
+    (line) => line.replace(HASHLINE_PREFIX_RE, ""),
+  )
+  return stripByMajority(
+    stripped,
+    (line) => WRAPPER_PREFIX_RE.test(line),
+    (line) => line.replace(WRAPPER_PREFIX_RE, ""),
+  )
 }
 
 function equalsIgnoringWhitespace(a: string, b: string) {
@@ -306,35 +313,51 @@ function mismatchContext(lines: string[], line: number) {
     .join("\n")
 }
 
+function mismatchSummary(lines: string[], mismatch: { expected: string; line: number }) {
+  if (mismatch.line < 1 || mismatch.line > lines.length) {
+    return `- expected ${mismatch.expected} -> line ${mismatch.line} is out of range (1-${Math.max(lines.length, 1)})`
+  }
+  return `- expected ${mismatch.expected} -> retry with ${hashlineRef(mismatch.line, lines[mismatch.line - 1])}`
+}
+
 function throwMismatch(lines: string[], mismatches: Array<{ expected: string; line: number }>) {
   const seen = new Set<string>()
-  const unique = mismatches.filter((m) => {
-    const key = `${m.expected}:${m.line}`
+  const unique = mismatches.filter((mismatch) => {
+    const key = `${mismatch.expected}:${mismatch.line}`
     if (seen.has(key)) return false
     seen.add(key)
     return true
   })
 
-  const body = unique
-    .map((m) => {
-      if (m.line < 1 || m.line > lines.length) {
+  const preview = unique.slice(0, 2).map((mismatch) => mismatchSummary(lines, mismatch))
+  const hidden = unique.length - preview.length
+  const count = unique.length
+  const linesOut = [
+    `Hashline edit rejected: ${count} anchor mismatch${count === 1 ? "" : "es"}. Re-read the file and retry with the updated anchors below.`,
+    ...preview,
+    ...(hidden > 0 ? [`- ... and ${hidden} more mismatches`] : []),
+  ]
+
+  if (Bun.env.OPENCODE_HL_MISMATCH_DEBUG === "1") {
+    const body = unique
+      .map((mismatch) => {
+        if (mismatch.line < 1 || mismatch.line > lines.length) {
+          return [
+            `>>> expected ${mismatch.expected}`,
+            `>>> current line ${mismatch.line} is out of range (1-${Math.max(lines.length, 1)})`,
+          ].join("\n")
+        }
         return [
-          `>>> expected ${m.expected}`,
-          `>>> current line ${m.line} is out of range (1-${Math.max(lines.length, 1)})`,
+          `>>> expected ${mismatch.expected}`,
+          mismatchContext(lines, mismatch.line),
+          `>>> retry with ${hashlineRef(mismatch.line, lines[mismatch.line - 1])}`,
         ].join("\n")
-      }
+      })
+      .join("\n\n")
+    linesOut.push("", body)
+  }
 
-      const current = hashlineRef(m.line, lines[m.line - 1])
-      return [`>>> expected ${m.expected}`, mismatchContext(lines, m.line), `>>> retry with ${current}`].join("\n")
-    })
-    .join("\n\n")
-
-  throw new Error(
-    [
-      "Hashline edit rejected: file changed since last read. Re-read the file and retry with updated LINE#ID anchors.",
-      body,
-    ].join("\n\n"),
-  )
+  throw new Error(linesOut.join("\n"))
 }
 
 function validateAnchors(lines: string[], refs: Array<{ raw: string; line: number; id: string }>) {
@@ -412,6 +435,7 @@ export function applyHashlineEdits(input: {
   trailing: boolean
   edits: HashlineEdit[]
   autocorrect?: boolean
+  aggressiveAutocorrect?: boolean
 }) {
   const lines = [...input.lines]
   const originalLines = [...input.lines]
@@ -420,6 +444,7 @@ export function applyHashlineEdits(input: {
   const replaceOps: Array<Extract<HashlineEdit, { type: "replace" }>> = []
   const ops: Splice[] = []
   const autocorrect = input.autocorrect ?? Bun.env.OPENCODE_HL_AUTOCORRECT === "1"
+  const aggressiveAutocorrect = input.aggressiveAutocorrect ?? Bun.env.OPENCODE_HL_AUTOCORRECT === "1"
   const parseText = (text: TextValue) => {
     const next = toLines(text)
     if (!autocorrect) return next
@@ -572,7 +597,7 @@ export function applyHashlineEdits(input: {
     }
 
     let text = op.text
-    if (autocorrect) {
+    if (autocorrect && aggressiveAutocorrect) {
       if (op.kind === "set_line" || op.kind === "replace_lines") {
         const start = op.startLine ?? op.start + 1
         const end = op.endLine ?? start + op.del - 1

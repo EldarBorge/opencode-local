@@ -137,6 +137,9 @@ export namespace ToolRegistry {
   ) {
     const config = await Config.get()
     const tools = await all()
+    const hashline = config.experimental?.hashline_edit !== false
+    const usePatch =
+      model.modelID.includes("gpt-") && !model.modelID.includes("oss") && !model.modelID.includes("gpt-4")
     const result = await Promise.all(
       tools
         .filter((t) => {
@@ -145,14 +148,12 @@ export namespace ToolRegistry {
             return model.providerID === "opencode" || Flag.OPENCODE_ENABLE_EXA
           }
 
-          if (config.experimental?.hashline_edit !== false) {
-            if (t.id === "apply_patch") return false
+          if (hashline) {
+            if (t.id === "apply_patch") return usePatch
             return true
           }
 
           // use apply tool in same format as codex
-          const usePatch =
-            model.modelID.includes("gpt-") && !model.modelID.includes("oss") && !model.modelID.includes("gpt-4")
           if (t.id === "apply_patch") return usePatch
           if (t.id === "edit" || t.id === "write") return !usePatch
 

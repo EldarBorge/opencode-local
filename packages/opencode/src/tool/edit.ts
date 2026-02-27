@@ -251,7 +251,12 @@ async function executeLegacy(params: LegacyEditParams, ctx: Tool.Context) {
   }
 }
 
-async function executeHashline(params: HashlineEditParams, ctx: Tool.Context, autocorrect: boolean) {
+async function executeHashline(
+  params: HashlineEditParams,
+  ctx: Tool.Context,
+  autocorrect: boolean,
+  aggressiveAutocorrect: boolean,
+) {
   const sourcePath = path.isAbsolute(params.filePath) ? params.filePath : path.join(Instance.directory, params.filePath)
   const targetPath = params.rename
     ? path.isAbsolute(params.rename)
@@ -345,6 +350,7 @@ async function executeHashline(params: HashlineEditParams, ctx: Tool.Context, au
       trailing: parsed.trailing,
       edits: params.edits,
       autocorrect,
+      aggressiveAutocorrect,
     })
     const output = serializeHashlineContent({
       lines: next.lines,
@@ -484,6 +490,7 @@ export const EditTool = Tool.define("edit", {
       hashlineParams,
       ctx,
       config.experimental?.hashline_autocorrect !== false || Bun.env.OPENCODE_HL_AUTOCORRECT === "1",
+      Bun.env.OPENCODE_HL_AUTOCORRECT === "1",
     )
   },
 })

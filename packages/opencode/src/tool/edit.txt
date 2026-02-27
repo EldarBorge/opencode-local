@@ -18,6 +18,7 @@ Hashline schema (default behavior):
 - Use strict anchor references from `Read` output: `LINE#ID`.
 - Hashline mode can be turned off with `experimental.hashline_edit: false`.
 - Autocorrect cleanup is on by default and can be turned off with `experimental.hashline_autocorrect: false`.
+- Default autocorrect only strips copied `LINE#ID:`/`>>>` prefixes; set `OPENCODE_HL_AUTOCORRECT=1` to opt into heavier cleanup heuristics.
 - When `Read` returns `LINE#ID:<content>`, prefer hashline operations.
 - Operations:
   - `set_line { line, text }`
@@ -28,4 +29,5 @@ Hashline schema (default behavior):
   - `append { text }`
   - `prepend { text }`
   - `replace { old_text, new_text, all? }`
-- In hashline mode, provide the exact `LINE#ID` anchors from the latest `Read` result. Mismatched anchors are rejected and must be retried with updated references.
+- In hashline mode, provide the exact `LINE#ID` anchors from the latest `Read` result. Mismatched anchors are rejected and should be retried with the returned `retry with` anchors.
+- Fallback guidance: GPT-family models can use `apply_patch` as fallback; non-GPT models should fallback to legacy `oldString/newString` payloads.

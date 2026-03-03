@@ -1875,14 +1875,14 @@ function Read(props: ToolProps<typeof ReadTool>) {
         part={props.part}
       >
         Read {normalizePath(props.input.filePath!)} {input(props.input, ["filePath"])}
+        <For each={loaded()}>
+          {(filepath) => (
+            <>
+              {"\n"}↳{"  "}Loaded {normalizePath(filepath)}
+            </>
+          )}
+        </For>
       </InlineTool>
-      <For each={loaded()}>
-        {(filepath) => (
-          <box paddingLeft={3}>
-            <text fg={theme.textMuted}>↳ Loaded {normalizePath(filepath)}</text>
-          </box>
-        )}
-      </For>
     </>
   )
 }
@@ -1975,7 +1975,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
 
   return (
     <InlineTool
-      icon="≡"
+      icon="⋮"
       spinner={isRunning()}
       complete={props.input.description}
       pending="Delegating..."

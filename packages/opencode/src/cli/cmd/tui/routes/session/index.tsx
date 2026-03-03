@@ -1980,7 +1980,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
     if (isRunning() && tools().length > 0) {
       // content[0] += ` · ${tools().length} toolcalls`
       if (current()) content.push(`⤷ ${Locale.titlecase(current()!.tool)} ${(current()!.state as any).title}`)
-      else content.push(`⤷ Running...`)
+      else content.push(`⤷ ${tools().length} toolcalls`)
     }
 
     if (props.part.state.status === "completed") {

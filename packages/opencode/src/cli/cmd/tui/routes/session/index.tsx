@@ -1990,7 +1990,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
         </Show>
       </Show>
       <Show when={duration() && props.part.state.status === "completed"}>
-        {"\n↳ "}
+        {"\n  ↳ "}
         {tools().length} toolcalls · {Locale.duration(duration())}
       </Show>
     </InlineTool>

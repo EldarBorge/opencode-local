@@ -118,12 +118,20 @@ export namespace Process {
 
     if (!proc.stdout || !proc.stderr) throw new Error("Process output not available")
 
-    const [code, stdout, stderr] = await Promise.all([proc.exited, buffer(proc.stdout), buffer(proc.stderr)])
-    const out = {
-      code,
-      stdout,
-      stderr,
-    }
+    const out = await Promise.all([proc.exited, buffer(proc.stdout), buffer(proc.stderr)])
+      .then(([code, stdout, stderr]) => ({
+        code,
+        stdout,
+        stderr,
+      }))
+      .catch((err: unknown) => {
+        if (!opts.nothrow) throw err
+        return {
+          code: 1,
+          stdout: Buffer.alloc(0),
+          stderr: Buffer.from(err instanceof Error ? err.message : String(err)),
+        }
+      })
     if (out.code === 0 || opts.nothrow) return out
     throw new RunFailedError(cmd, out.code, out.stdout, out.stderr)
   }

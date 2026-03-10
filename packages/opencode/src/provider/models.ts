@@ -69,7 +69,7 @@ export namespace ModelsDev {
       .object({
         npm: z.string().optional(),
         api: z.string().optional(),
-        shape: z.enum(["responses", "completions"]).optional(),
+        shape: z.string().optional(),
       })
       .optional(),
     variants: z.record(z.string(), z.record(z.string(), z.any())).optional(),

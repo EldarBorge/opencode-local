@@ -606,7 +606,7 @@ export namespace Provider {
         id: z.string(),
         url: z.string(),
         npm: z.string(),
-        shape: z.enum(["responses", "completions"]).optional(),
+        shape: z.string().optional(),
       }),
       name: z.string(),
       family: z.string().optional(),

@@ -27,7 +27,9 @@ export namespace Plugin {
       directory: Instance.directory,
       fetch: async (...args) => Server.Default().fetch(...args),
     })
+    log.info("loading config")
     const config = await Config.get()
+    log.info("config loaded")
     const hooks: Hooks[] = []
     const input: PluginInput = {
       client,

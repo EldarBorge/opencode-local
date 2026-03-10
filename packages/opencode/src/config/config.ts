@@ -150,8 +150,7 @@ export namespace Config {
 
       deps.push(
         iife(async () => {
-          const shouldInstall = await needsInstall(dir)
-          if (shouldInstall) await installDependencies(dir)
+          await installDependencies(dir)
         }),
       )
 
@@ -267,6 +266,10 @@ export namespace Config {
   }
 
   export async function installDependencies(dir: string) {
+    if (!(await isWritable(dir))) {
+      log.info("config dir is not writable, skipping dependency install", { dir })
+      return
+    }
     const pkg = path.join(dir, "package.json")
     const targetVersion = Installation.isLocal() ? "*" : Installation.VERSION
 
@@ -280,16 +283,15 @@ export namespace Config {
     await Filesystem.writeJson(pkg, json)
 
     const gitignore = path.join(dir, ".gitignore")
-    await Filesystem.write(
-      gitignore,
-      ["node_modules", "plans", "package.json", "bun.lock", ".gitignore", "package-lock.json"].join("\n"),
-    )
+    if (!(await Filesystem.exists(gitignore)))
+      await Filesystem.write(
+        gitignore,
+        ["node_modules", "plans", "package.json", "bun.lock", ".gitignore", "package-lock.json"].join("\n"),
+      )
 
     // Install any additional dependencies defined in the package.json
     // This allows local plugins and custom tools to use external packages
-    await Npm.install(dir).catch((err: any) => {
-      log.warn("failed to install dependencies", { dir, error: err.message })
-    })
+    await Npm.install(dir)
   }
 
   async function isWritable(dir: string) {
@@ -299,41 +301,6 @@ export namespace Config {
     } catch {
       return false
     }
-  }
-
-  export async function needsInstall(dir: string) {
-    // Some config dirs may be read-only.
-    // Installing deps there will fail; skip installation in that case.
-    const writable = await isWritable(dir)
-    if (!writable) {
-      log.debug("config dir is not writable, skipping dependency install", { dir })
-      return false
-    }
-
-    const nodeModules = path.join(dir, "node_modules")
-    if (!existsSync(nodeModules)) return true
-
-    const pkg = path.join(dir, "package.json")
-    const pkgExists = await Filesystem.exists(pkg)
-    if (!pkgExists) return true
-
-    const parsed = await Filesystem.readJson<{ dependencies?: Record<string, string> }>(pkg).catch(() => null)
-    const dependencies = parsed?.dependencies ?? {}
-    const depVersion = dependencies["@opencode-ai/plugin"]
-    if (!depVersion) return true
-
-    const targetVersion = Installation.isLocal() ? "latest" : Installation.VERSION
-    if (targetVersion === "latest") {
-      const isOutdated = await Npm.outdated("@opencode-ai/plugin", depVersion)
-      if (!isOutdated) return false
-      log.info("Cached version is outdated, proceeding with install", {
-        pkg: "@opencode-ai/plugin",
-        cachedVersion: depVersion,
-      })
-      return true
-    }
-    if (depVersion === targetVersion) return false
-    return true
   }
 
   function rel(item: string, patterns: string[]) {

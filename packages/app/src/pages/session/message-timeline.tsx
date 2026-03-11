@@ -744,7 +744,11 @@ export function MessageTimeline(props: {
                             icon="dot-grid"
                             variant="ghost"
                             class="size-6 rounded-md data-[expanded]:bg-surface-base-active"
+                            classList={{
+                              "bg-surface-base-active": share.open || title.pendingShare,
+                            }}
                             aria-label={language.t("common.moreOptions")}
+                            aria-expanded={title.menuOpen || share.open || title.pendingShare}
                             ref={(el: HTMLButtonElement) => {
                               more = el
                             }}
@@ -761,8 +765,10 @@ export function MessageTimeline(props: {
                                 }
                                 if (title.pendingShare) {
                                   event.preventDefault()
-                                  setTitle("pendingShare", false)
-                                  requestAnimationFrame(() => setShare({ open: true, dismiss: null }))
+                                  requestAnimationFrame(() => {
+                                    setShare({ open: true, dismiss: null })
+                                    setTitle("pendingShare", false)
+                                  })
                                 }
                               }}
                             >

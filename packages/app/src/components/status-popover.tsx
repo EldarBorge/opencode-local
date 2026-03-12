@@ -168,6 +168,8 @@ export function StatusPopover() {
   const language = useLanguage()
   const navigate = useNavigate()
 
+  const [open, setOpen] = createSignal(false)
+
   const fetcher = platform.fetch ?? globalThis.fetch
   const servers = createMemo(() => {
     const current = server.current
@@ -199,18 +201,23 @@ export function StatusPopover() {
 
   return (
     <Popover
+      open={open()}
+      onOpenChange={setOpen}
       triggerAs={Button}
       triggerProps={{
         variant: "ghost",
-        class: "titlebar-icon w-6 h-6 p-0 box-border",
+        class: "titlebar-icon w-8 h-6 p-0 box-border",
         "aria-label": language.t("status.popover.trigger"),
         style: { scale: 1 },
       }}
       trigger={
-        <div class="flex size-4 items-center justify-center">
+        <div class="relative size-4">
+          <div class="badge-mask-tight size-4 flex items-center justify-center">
+            <Icon name={open() ? "status-active" : "status"} size="small" />
+          </div>
           <div
             classList={{
-              "size-1.5 rounded-full": true,
+              "absolute top-0 -right-px size-1.5 rounded-full": true,
               "bg-icon-success-base": overallHealthy(),
               "bg-icon-critical-base": !overallHealthy() && server.healthy() !== undefined,
               "bg-border-weak-base": server.healthy() === undefined,

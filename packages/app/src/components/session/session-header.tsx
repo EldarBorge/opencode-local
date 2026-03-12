@@ -304,7 +304,6 @@ export function SessionHeader() {
         {(mount) => (
           <Portal mount={mount()}>
             <div class="flex items-center gap-2">
-              <StatusPopover />
               <Show when={projectDirectory()}>
                 <div class="hidden xl:flex items-center">
                   <Show
@@ -421,6 +420,7 @@ export function SessionHeader() {
                 </div>
               </Show>
               <div class="flex items-center gap-1">
+                <StatusPopover />
                 <TooltipKeybind
                   title={language.t("command.terminal.toggle")}
                   keybind={command.keybind("terminal.toggle")}

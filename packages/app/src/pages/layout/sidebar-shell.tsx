@@ -11,7 +11,7 @@ import { ConstrainDragXAxis } from "@/utils/solid-dnd"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { type LocalProject } from "@/context/layout"
-import { StatusPopover } from "@/components/status-popover"
+import { StatusModal } from "@/components/status-popover"
 
 export const SidebarContent = (props: {
   mobile?: boolean
@@ -95,7 +95,7 @@ export const SidebarContent = (props: {
         <div class="shrink-0 w-full pt-3 pb-6 flex flex-col items-center gap-2">
           <Show when={!!props.dir}>
             <Tooltip placement={placement()} value={props.statusLabel()}>
-              <StatusPopover directory={props.dir} placement={props.mobile ? "bottom-end" : "right-end"} />
+              <StatusModal directory={props.dir} />
             </Tooltip>
           </Show>
           <TooltipKeybind placement={placement()} title={props.settingsLabel()} keybind={props.settingsKeybind() ?? ""}>

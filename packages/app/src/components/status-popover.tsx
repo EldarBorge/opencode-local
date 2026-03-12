@@ -1,7 +1,7 @@
 import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { Dialog } from "@opencode-ai/ui/dialog"
 import { Icon } from "@opencode-ai/ui/icon"
-import { Popover } from "@opencode-ai/ui/popover"
 import { Switch } from "@opencode-ai/ui/switch"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { showToast } from "@opencode-ai/ui/toast"
@@ -167,7 +167,7 @@ const useMcpToggle = (input: {
   return { loading, toggle }
 }
 
-export function StatusPopover(props: { directory: string; placement?: "right-end" | "bottom-end" }) {
+export function StatusModal(props: { directory: string }) {
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const server = useServer()
@@ -187,81 +187,16 @@ export function StatusPopover(props: { directory: string; placement?: "right-end
     return globalSDK.createClient({ directory: props.directory, throwOnError: true })
   })
 
-  const [shown, setShown] = createSignal(false)
-  const servers = createMemo(() => {
-    const current = server.current
-    const list = server.list
-    if (!current) return list
-    if (list.every((item) => ServerConnection.key(item) !== ServerConnection.key(current))) return [current, ...list]
-    return [current, ...list.filter((item) => ServerConnection.key(item) !== ServerConnection.key(current))]
-  })
-  const health = useServerHealth(servers)
-  const sortedServers = createMemo(() => listServersByHealth(servers(), server.key, health))
-  const mcp = useMcpToggle({
-    language,
-    get: () => child(),
-    client: () => client(),
-  })
-  const defaultServer = useDefaultServerKey(platform.getDefaultServer)
-  const mcpNames = createMemo(() => Object.keys(child()?.store.mcp ?? {}).sort((a, b) => a.localeCompare(b)))
-  const mcpStatus = (name: string) => child()?.store.mcp?.[name]?.status
-  const mcpConnected = createMemo(() => mcpNames().filter((name) => mcpStatus(name) === "connected").length)
-  const lspItems = createMemo(() => child()?.store.lsp ?? [])
-  const lspCount = createMemo(() => lspItems().length)
-  const plugins = createMemo(() => child()?.store.config.plugin ?? [])
-  const pluginCount = createMemo(() => plugins().length)
-  const pluginEmpty = createMemo(() => pluginEmptyMessage(language.t("dialog.plugins.empty"), "opencode.json"))
-  const overallHealthy = createMemo(() => {
-    const serverHealthy = server.healthy() === true
-    const anyMcpIssue = mcpNames().some((name) => {
-      const status = mcpStatus(name)
-      return status !== "connected" && status !== "disabled"
-    })
-    return serverHealthy && !anyMcpIssue
-  })
-
-  return (
-    <Popover
-      open={shown()}
-      onOpenChange={setShown}
-      triggerAs={"button"}
-      triggerProps={
-        {
-          type: "button",
-          "data-component": "icon-button",
-          "data-icon": "status",
-          "data-variant": "ghost",
-          "data-size": "large",
-          class: "data-[expanded]:bg-surface-base-active",
-          "aria-label": language.t("status.popover.trigger"),
-        } as any
-      }
-      trigger={
-        <div class="relative size-full flex items-center justify-center">
-          <div
-            class="size-full flex items-center justify-center"
-            style={{
-              "-webkit-mask-image": "radial-gradient(circle 5px at calc(100% - 8px) 8px, transparent 5px, black 5.5px)",
-              "mask-image": "radial-gradient(circle 5px at calc(100% - 8px) 8px, transparent 5px, black 5.5px)",
-            }}
-          >
-            <Icon name={shown() ? "status-active" : "status"} size="normal" />
-          </div>
-          <div
-            classList={{
-              "absolute top-[5px] right-[5px] size-1.5 rounded-full z-10": true,
-              "bg-icon-success-base": overallHealthy(),
-              "bg-icon-critical-base": !overallHealthy() && server.healthy() !== undefined,
-              "bg-border-weak-base": server.healthy() === undefined,
-            }}
-          />
-        </div>
-      }
-      class="[&_[data-slot=popover-body]]:p-0 w-[360px] max-w-[calc(100vw-40px)] bg-transparent border-0 shadow-none rounded-xl"
-      gutter={8}
-      placement={props.placement ?? "right-end"}
-    >
-      <div class="flex items-center gap-1 w-[360px] rounded-xl shadow-[var(--shadow-lg-border-base)]">
+  const open = () =>
+    dialog.show(() => (
+      <Dialog
+        title={language.t("status.popover.trigger")}
+        position="top"
+        style={{ "--dialog-top": "33vh" } as any}
+        fit
+        class="!max-h-[33vh]"
+        transition
+      >
         <Tabs
           aria-label={language.t("status.popover.ariaLabel")}
           class="tabs bg-background-strong rounded-xl overflow-hidden"
@@ -291,7 +226,7 @@ export function StatusPopover(props: { directory: string; placement?: "right-end
 
           <Tabs.Content value="servers">
             <div class="flex flex-col px-2 pb-2">
-              <div class="flex flex-col p-3 bg-background-base rounded-sm min-h-14">
+              <div class="flex flex-col p-3 rounded-sm min-h-[160px]">
                 <For each={sortedServers()}>
                   {(s) => {
                     const key = ServerConnection.key(s)
@@ -309,6 +244,7 @@ export function StatusPopover(props: { directory: string; placement?: "right-end
                           if (isBlocked()) return
                           server.setActive(key)
                           navigate("/")
+                          dialog.close()
                         }}
                       >
                         <ServerHealthIndicator health={health[key]} />
@@ -350,7 +286,7 @@ export function StatusPopover(props: { directory: string; placement?: "right-end
 
           <Tabs.Content value="mcp">
             <div class="flex flex-col px-2 pb-2">
-              <div class="flex flex-col p-3 bg-background-base rounded-sm min-h-14">
+              <div class="flex flex-col p-3 rounded-sm min-h-[160px]">
                 <Show
                   when={mcpNames().length > 0}
                   fallback={
@@ -399,7 +335,7 @@ export function StatusPopover(props: { directory: string; placement?: "right-end
 
           <Tabs.Content value="lsp">
             <div class="flex flex-col px-2 pb-2">
-              <div class="flex flex-col p-3 bg-background-base rounded-sm min-h-14">
+              <div class="flex flex-col p-3 rounded-sm min-h-[160px]">
                 <Show
                   when={lspItems().length > 0}
                   fallback={
@@ -429,7 +365,7 @@ export function StatusPopover(props: { directory: string; placement?: "right-end
 
           <Tabs.Content value="plugins">
             <div class="flex flex-col px-2 pb-2">
-              <div class="flex flex-col p-3 bg-background-base rounded-sm min-h-14">
+              <div class="flex flex-col p-3 rounded-sm min-h-[160px]">
                 <Show
                   when={plugins().length > 0}
                   fallback={<div class="text-14-regular text-text-base text-center my-auto">{pluginEmpty()}</div>}
@@ -447,7 +383,69 @@ export function StatusPopover(props: { directory: string; placement?: "right-end
             </div>
           </Tabs.Content>
         </Tabs>
+      </Dialog>
+    ))
+  const servers = createMemo(() => {
+    const current = server.current
+    const list = server.list
+    if (!current) return list
+    if (list.every((item) => ServerConnection.key(item) !== ServerConnection.key(current))) return [current, ...list]
+    return [current, ...list.filter((item) => ServerConnection.key(item) !== ServerConnection.key(current))]
+  })
+  const health = useServerHealth(servers)
+  const sortedServers = createMemo(() => listServersByHealth(servers(), server.key, health))
+  const mcp = useMcpToggle({
+    language,
+    get: () => child(),
+    client: () => client(),
+  })
+  const defaultServer = useDefaultServerKey(platform.getDefaultServer)
+  const mcpNames = createMemo(() => Object.keys(child()?.store.mcp ?? {}).sort((a, b) => a.localeCompare(b)))
+  const mcpStatus = (name: string) => child()?.store.mcp?.[name]?.status
+  const mcpConnected = createMemo(() => mcpNames().filter((name) => mcpStatus(name) === "connected").length)
+  const lspItems = createMemo(() => child()?.store.lsp ?? [])
+  const lspCount = createMemo(() => lspItems().length)
+  const plugins = createMemo(() => child()?.store.config.plugin ?? [])
+  const pluginCount = createMemo(() => plugins().length)
+  const pluginEmpty = createMemo(() => pluginEmptyMessage(language.t("dialog.plugins.empty"), "opencode.json"))
+  const overallHealthy = createMemo(() => {
+    const serverHealthy = server.healthy() === true
+    const anyMcpIssue = mcpNames().some((name) => {
+      const status = mcpStatus(name)
+      return status !== "connected" && status !== "disabled"
+    })
+    return serverHealthy && !anyMcpIssue
+  })
+
+  return (
+    <button
+      type="button"
+      data-component="icon-button"
+      data-icon="status"
+      data-variant="ghost"
+      data-size="large"
+      aria-label={language.t("status.popover.trigger")}
+      onClick={open}
+    >
+      <div class="relative size-full flex items-center justify-center">
+        <div
+          class="size-full flex items-center justify-center"
+          style={{
+            "-webkit-mask-image": "radial-gradient(circle 5px at calc(100% - 8px) 8px, transparent 5px, black 5.5px)",
+            "mask-image": "radial-gradient(circle 5px at calc(100% - 8px) 8px, transparent 5px, black 5.5px)",
+          }}
+        >
+          <Icon name="status" size="normal" />
+        </div>
+        <div
+          classList={{
+            "absolute top-[5px] right-[5px] size-1.5 rounded-full z-10": true,
+            "bg-icon-success-base": overallHealthy(),
+            "bg-icon-critical-base": !overallHealthy() && server.healthy() !== undefined,
+            "bg-border-weak-base": server.healthy() === undefined,
+          }}
+        />
       </div>
-    </Popover>
+    </button>
   )
 }

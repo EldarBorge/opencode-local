@@ -2181,6 +2181,7 @@ export default function Layout(props: ParentProps) {
   const sidebarContent = (mobile?: boolean) => (
     <SidebarContent
       mobile={mobile}
+      dir={currentDir()}
       opened={() => layout.sidebar.opened()}
       aimMove={aim.move}
       projects={projects}
@@ -2199,6 +2200,7 @@ export default function Layout(props: ParentProps) {
       onOpenSettings={openSettings}
       helpLabel={() => language.t("sidebar.help")}
       onOpenHelp={() => platform.openLink("https://opencode.ai/desktop-feedback")}
+      statusLabel={() => language.t("status.popover.trigger")}
       renderPanel={() =>
         mobile ? (
           <SidebarPanel project={currentProject()} mobile />

@@ -11,9 +11,9 @@ import { createStore, reconcile } from "solid-js/store"
 import { ServerHealthIndicator, ServerRow } from "@/components/server/server-row"
 import { useLanguage } from "@/context/language"
 import { usePlatform } from "@/context/platform"
-import { useSDK } from "@/context/sdk"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { useGlobalSync } from "@/context/global-sync"
 import { normalizeServerUrl, ServerConnection, useServer } from "@/context/server"
-import { useSync } from "@/context/sync"
 import { useCheckServerHealth, type ServerHealth } from "@/utils/server-health"
 import { DialogSelectServer } from "./dialog-select-server"
 
@@ -129,8 +129,10 @@ const useDefaultServerKey = (
 }
 
 const useMcpToggle = (input: {
-  sync: ReturnType<typeof useSync>
-  sdk: ReturnType<typeof useSDK>
+  get: () =>
+    | { store: ReturnType<ReturnType<typeof useGlobalSync>["child"]>[0]; set: (...args: unknown[]) => void }
+    | undefined
+  client: () => ReturnType<ReturnType<typeof useGlobalSDK>["createClient"]> | undefined
   language: ReturnType<typeof useLanguage>
 }) => {
   const [loading, setLoading] = createSignal<string | null>(null)
@@ -139,13 +141,18 @@ const useMcpToggle = (input: {
     if (loading()) return
     setLoading(name)
 
+    const child = input.get()
+    const cli = input.client()
+    if (!child || !cli) {
+      setLoading(null)
+      return
+    }
+
     try {
-      const status = input.sync.data.mcp[name]
-      await (status?.status === "connected"
-        ? input.sdk.client.mcp.disconnect({ name })
-        : input.sdk.client.mcp.connect({ name }))
-      const result = await input.sdk.client.mcp.status()
-      if (result.data) input.sync.set("mcp", result.data)
+      const status = child.store.mcp[name]
+      await (status?.status === "connected" ? cli.mcp.disconnect({ name }) : cli.mcp.connect({ name }))
+      const result = await cli.mcp.status()
+      if (result.data) child.set("mcp", result.data)
     } catch (err) {
       showToast({
         variant: "error",
@@ -160,14 +167,25 @@ const useMcpToggle = (input: {
   return { loading, toggle }
 }
 
-export function StatusPopover() {
-  const sync = useSync()
-  const sdk = useSDK()
+export function StatusPopover(props: { directory: string; placement?: "right-end" | "bottom-end" }) {
+  const globalSDK = useGlobalSDK()
+  const globalSync = useGlobalSync()
   const server = useServer()
   const platform = usePlatform()
   const dialog = useDialog()
   const language = useLanguage()
   const navigate = useNavigate()
+
+  const child = createMemo(() => {
+    if (!props.directory) return
+    const [store, set] = globalSync.child(props.directory)
+    return { store, set }
+  })
+
+  const client = createMemo(() => {
+    if (!props.directory) return
+    return globalSDK.createClient({ directory: props.directory, throwOnError: true })
+  })
 
   const [shown, setShown] = createSignal(false)
   const servers = createMemo(() => {
@@ -179,14 +197,18 @@ export function StatusPopover() {
   })
   const health = useServerHealth(servers)
   const sortedServers = createMemo(() => listServersByHealth(servers(), server.key, health))
-  const mcp = useMcpToggle({ sync, sdk, language })
+  const mcp = useMcpToggle({
+    language,
+    get: () => child(),
+    client: () => client(),
+  })
   const defaultServer = useDefaultServerKey(platform.getDefaultServer)
-  const mcpNames = createMemo(() => Object.keys(sync.data.mcp ?? {}).sort((a, b) => a.localeCompare(b)))
-  const mcpStatus = (name: string) => sync.data.mcp?.[name]?.status
+  const mcpNames = createMemo(() => Object.keys(child()?.store.mcp ?? {}).sort((a, b) => a.localeCompare(b)))
+  const mcpStatus = (name: string) => child()?.store.mcp?.[name]?.status
   const mcpConnected = createMemo(() => mcpNames().filter((name) => mcpStatus(name) === "connected").length)
-  const lspItems = createMemo(() => sync.data.lsp ?? [])
+  const lspItems = createMemo(() => child()?.store.lsp ?? [])
   const lspCount = createMemo(() => lspItems().length)
-  const plugins = createMemo(() => sync.data.config.plugin ?? [])
+  const plugins = createMemo(() => child()?.store.config.plugin ?? [])
   const pluginCount = createMemo(() => plugins().length)
   const pluginEmpty = createMemo(() => pluginEmptyMessage(language.t("dialog.plugins.empty"), "opencode.json"))
   const overallHealthy = createMemo(() => {
@@ -202,21 +224,24 @@ export function StatusPopover() {
     <Popover
       open={shown()}
       onOpenChange={setShown}
-      triggerAs={Button}
-      triggerProps={{
-        variant: "ghost",
-        class: "titlebar-icon w-8 h-6 p-0 box-border",
-        "aria-label": language.t("status.popover.trigger"),
-        style: { scale: 1 },
-      }}
+      triggerAs={"button"}
+      triggerProps={
+        {
+          type: "button",
+          "data-component": "icon-button",
+          "data-icon": "status",
+          "data-variant": "ghost",
+          "data-size": "large",
+          class: "data-[expanded]:bg-surface-base-active",
+          "aria-label": language.t("status.popover.trigger"),
+        } as any
+      }
       trigger={
-        <div class="relative size-4">
-          <div class="badge-mask-tight size-4 flex items-center justify-center">
-            <Icon name={shown() ? "status-active" : "status"} size="small" />
-          </div>
+        <div class="relative size-full flex items-center justify-center">
+          <Icon name={shown() ? "status-active" : "status"} size="normal" />
           <div
             classList={{
-              "absolute -top-px -right-px size-1.5 rounded-full": true,
+              "absolute top-1 right-1 size-1.5 rounded-full": true,
               "bg-icon-success-base": overallHealthy(),
               "bg-icon-critical-base": !overallHealthy() && server.healthy() !== undefined,
               "bg-border-weak-base": server.healthy() === undefined,
@@ -226,8 +251,7 @@ export function StatusPopover() {
       }
       class="[&_[data-slot=popover-body]]:p-0 w-[360px] max-w-[calc(100vw-40px)] bg-transparent border-0 shadow-none rounded-xl"
       gutter={4}
-      placement="bottom-end"
-      shift={-168}
+      placement={props.placement ?? "right-end"}
     >
       <div class="flex items-center gap-1 w-[360px] rounded-xl shadow-[var(--shadow-lg-border-base)]">
         <Tabs

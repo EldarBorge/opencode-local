@@ -6,6 +6,7 @@ import {
   createSignal,
   For,
   Match,
+  onCleanup,
   on,
   onMount,
   Show,
@@ -233,6 +234,7 @@ export function Session() {
 
   let scroll: ScrollBoxRenderable
   let prompt: PromptRef
+  let historyAdjust = false
   const keybind = useKeybind()
   const dialog = useDialog()
   const renderer = useRenderer()
@@ -318,6 +320,38 @@ export function Session() {
       scroll.scrollTo(scroll.scrollHeight)
     }, 50)
   }
+
+  async function loadOlder() {
+    if (!scroll || scroll.isDestroyed) return
+    if (!sync.session.history.more(route.sessionID)) return
+    if (sync.session.history.loading(route.sessionID)) return
+    historyAdjust = true
+    const sessionID = route.sessionID
+    const height = scroll.scrollHeight
+    const y = scroll.y
+    try {
+      await sync.session.history.loadMore(sessionID)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      if (!scroll || scroll.isDestroyed) return
+      if (route.sessionID !== sessionID) return
+      const next = scroll.scrollHeight - height
+      if (next > 0) scroll.scrollBy(next + (y === 0 ? -1 : 0))
+    } finally {
+      historyAdjust = false
+    }
+  }
+
+  onMount(() => {
+    const id = setInterval(() => {
+      if (!scroll || scroll.isDestroyed) return
+      if (historyAdjust) return
+      if (scroll.y > 2) return
+      if (!sync.session.history.more(route.sessionID)) return
+      if (sync.session.history.loading(route.sessionID)) return
+      void loadOlder()
+    }, 120)
+    onCleanup(() => clearInterval(id))
+  })
 
   const local = useLocal()
 
@@ -1069,6 +1103,15 @@ export function Session() {
               flexGrow={1}
               scrollAcceleration={scrollAcceleration()}
             >
+              <Show when={sync.session.history.loading(route.sessionID) || sync.session.history.more(route.sessionID)}>
+                <box paddingLeft={3} paddingBottom={1} flexShrink={0}>
+                  <text fg={theme.textMuted}>
+                    {sync.session.history.loading(route.sessionID)
+                      ? "Loading older messages..."
+                      : "Scroll up for older messages"}
+                  </text>
+                </box>
+              </Show>
               <For each={messages()}>
                 {(message, index) => (
                   <Switch>

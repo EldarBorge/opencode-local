@@ -30,6 +30,26 @@ import { Log } from "@/util/log"
 import type { Path } from "@opencode-ai/sdk"
 import type { Workspace } from "@opencode-ai/sdk/v2"
 
+function runInflight(map: Map<string, Promise<void>>, key: string, task: () => Promise<void>) {
+  const pending = map.get(key)
+  if (pending) return pending
+  const promise = task().finally(() => {
+    map.delete(key)
+  })
+  map.set(key, promise)
+  return promise
+}
+
+function cmp(a: string, b: string) {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+function merge<T extends { id: string }>(a: readonly T[], b: readonly T[]) {
+  const map = new Map(a.map((item) => [item.id, item] as const))
+  for (const item of b) map.set(item.id, item)
+  return [...map.values()].sort((x, y) => cmp(x.id, y.id))
+}
+
 export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   name: "Sync",
   init: () => {
@@ -106,6 +126,31 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     })
 
     const sdk = useSDK()
+    const pageSize = 100
+    const inflight = new Map<string, Promise<void>>()
+    const [meta, setMeta] = createStore({
+      cursor: {} as Record<string, string | undefined>,
+      complete: {} as Record<string, boolean>,
+      loading: {} as Record<string, boolean>,
+      synced: {} as Record<string, boolean>,
+    })
+
+    const fetchMessages = async (input: { sessionID: string; limit: number; before?: string }) => {
+      const messages = await sdk.client.session.messages(
+        { sessionID: input.sessionID, limit: input.limit, before: input.before },
+        { throwOnError: true },
+      )
+      const items = (messages.data ?? []).filter((item) => !!item?.info?.id)
+      const next = items.map((item) => item.info).sort((a, b) => cmp(a.id, b.id))
+      const part = items.map((item) => ({ id: item.info.id, part: item.parts.toSorted((a, b) => cmp(a.id, b.id)) }))
+      const cursor = messages.response.headers.get("x-next-cursor") ?? undefined
+      return {
+        message: next,
+        part,
+        cursor,
+        complete: !cursor,
+      }
+    }
 
     async function syncWorkspaces() {
       const result = await sdk.client.experimental.workspace.list().catch(() => undefined)
@@ -203,6 +248,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           break
 
         case "session.deleted": {
+          setMeta(
+            produce((draft) => {
+              delete draft.cursor[event.properties.info.id]
+              delete draft.complete[event.properties.info.id]
+              delete draft.loading[event.properties.info.id]
+              delete draft.synced[event.properties.info.id]
+            }),
+          )
           const result = Binary.search(store.session, event.properties.info.id, (s) => s.id)
           if (result.found) {
             setStore(
@@ -252,25 +305,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               draft.splice(result.index, 0, event.properties.info)
             }),
           )
-          const updated = store.message[event.properties.info.sessionID]
-          if (updated.length > 100) {
-            const oldest = updated[0]
-            batch(() => {
-              setStore(
-                "message",
-                event.properties.info.sessionID,
-                produce((draft) => {
-                  draft.shift()
-                }),
-              )
-              setStore(
-                "part",
-                produce((draft) => {
-                  delete draft[oldest.id]
-                }),
-              )
-            })
-          }
           break
         }
         case "message.removed": {
@@ -441,7 +475,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       bootstrap()
     })
 
-    const fullSyncedSessions = new Set<string>()
     const result = {
       data: store,
       set: setStore,
@@ -468,27 +501,73 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           return last.time.completed ? "idle" : "working"
         },
         async sync(sessionID: string) {
-          if (fullSyncedSessions.has(sessionID)) return
-          const [session, messages, todo, diff] = await Promise.all([
-            sdk.client.session.get({ sessionID }, { throwOnError: true }),
-            sdk.client.session.messages({ sessionID, limit: 100 }),
-            sdk.client.session.todo({ sessionID }),
-            sdk.client.session.diff({ sessionID }),
-          ])
-          setStore(
-            produce((draft) => {
-              const match = Binary.search(draft.session, sessionID, (s) => s.id)
-              if (match.found) draft.session[match.index] = session.data!
-              if (!match.found) draft.session.splice(match.index, 0, session.data!)
-              draft.todo[sessionID] = todo.data ?? []
-              draft.message[sessionID] = messages.data!.map((x) => x.info)
-              for (const message of messages.data!) {
-                draft.part[message.info.id] = message.parts
-              }
-              draft.session_diff[sessionID] = diff.data ?? []
-            }),
-          )
-          fullSyncedSessions.add(sessionID)
+          if (meta.synced[sessionID]) return
+          return runInflight(inflight, sessionID, async () => {
+            if (meta.synced[sessionID]) return
+            setMeta("loading", sessionID, true)
+            const [session, messages, todo, diff] = await Promise.all([
+              sdk.client.session.get({ sessionID }, { throwOnError: true }),
+              fetchMessages({ sessionID, limit: pageSize }),
+              sdk.client.session.todo({ sessionID }),
+              sdk.client.session.diff({ sessionID }),
+            ])
+            batch(() => {
+              setStore(
+                produce((draft) => {
+                  const match = Binary.search(draft.session, sessionID, (s) => s.id)
+                  if (match.found) draft.session[match.index] = session.data!
+                  if (!match.found) draft.session.splice(match.index, 0, session.data!)
+                  draft.todo[sessionID] = todo.data ?? []
+                  draft.message[sessionID] = messages.message
+                  for (const message of messages.part) {
+                    draft.part[message.id] = message.part
+                  }
+                  draft.session_diff[sessionID] = diff.data ?? []
+                }),
+              )
+              setMeta("cursor", sessionID, messages.cursor)
+              setMeta("complete", sessionID, messages.complete)
+              setMeta("synced", sessionID, true)
+              setMeta("loading", sessionID, false)
+            })
+          }).finally(() => {
+            setMeta("loading", sessionID, false)
+          })
+        },
+        history: {
+          more(sessionID: string) {
+            return !meta.complete[sessionID] && !!meta.cursor[sessionID]
+          },
+          loading(sessionID: string) {
+            return meta.loading[sessionID] ?? false
+          },
+          async loadMore(sessionID: string, count = pageSize) {
+            const before = meta.cursor[sessionID]
+            if (!before) return
+            if (meta.loading[sessionID]) return
+            return runInflight(inflight, `${sessionID}:history`, async () => {
+              const cursor = meta.cursor[sessionID]
+              if (!cursor) return
+              setMeta("loading", sessionID, true)
+              const next = await fetchMessages({ sessionID, limit: count, before: cursor })
+              batch(() => {
+                setStore(
+                  "message",
+                  sessionID,
+                  reconcile(merge(store.message[sessionID] ?? [], next.message), { key: "id" }),
+                )
+                for (const item of next.part) {
+                  setStore("part", item.id, reconcile(merge(store.part[item.id] ?? [], item.part), { key: "id" }))
+                }
+                setMeta("cursor", sessionID, next.cursor)
+                setMeta("complete", sessionID, next.complete)
+                setMeta("synced", sessionID, true)
+                setMeta("loading", sessionID, false)
+              })
+            }).finally(() => {
+              setMeta("loading", sessionID, false)
+            })
+          },
         },
       },
       workspace: {

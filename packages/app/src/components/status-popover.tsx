@@ -228,7 +228,7 @@ export function StatusModal(props: { directory: string }) {
           </Tabs.List>
 
           <Tabs.Content value="servers">
-            <div class="flex flex-col px-2 pb-2">
+            <div class="flex flex-col p-2">
               <div class="flex flex-col p-3 rounded-sm min-h-[160px]">
                 <For each={sortedServers()}>
                   {(s) => {
@@ -288,7 +288,7 @@ export function StatusModal(props: { directory: string }) {
           </Tabs.Content>
 
           <Tabs.Content value="mcp">
-            <div class="flex flex-col px-2 pb-2">
+            <div class="flex flex-col p-2">
               <div class="flex flex-col p-3 rounded-sm min-h-[160px]">
                 <Show
                   when={mcpNames().length > 0}
@@ -337,7 +337,7 @@ export function StatusModal(props: { directory: string }) {
           </Tabs.Content>
 
           <Tabs.Content value="lsp">
-            <div class="flex flex-col px-2 pb-2">
+            <div class="flex flex-col p-2">
               <div class="flex flex-col p-3 rounded-sm min-h-[160px]">
                 <Show
                   when={lspItems().length > 0}
@@ -367,7 +367,7 @@ export function StatusModal(props: { directory: string }) {
           </Tabs.Content>
 
           <Tabs.Content value="plugins">
-            <div class="flex flex-col px-2 pb-2">
+            <div class="flex flex-col p-2">
               <div class="flex flex-col p-3 rounded-sm min-h-[160px]">
                 <Show
                   when={plugins().length > 0}

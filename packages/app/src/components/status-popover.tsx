@@ -194,7 +194,7 @@ export function StatusModal(props: { directory: string }) {
         position="top"
         style={{ "--dialog-top": "33vh" } as any}
         fit
-        class="!max-h-[33vh]"
+        class="!max-h-[33vh] [&_[data-slot=dialog-header]]:bg-background-base"
         transition
       >
         <Tabs
@@ -207,7 +207,7 @@ export function StatusModal(props: { directory: string }) {
         >
           <Tabs.List
             data-slot="tablist"
-            class="bg-transparent border-b border-border-weak-base px-5 pt-0 pb-0 gap-7 h-10"
+            class="bg-background-base border-b border-border-weak-base px-5 pt-0 pb-0 gap-7 h-10"
           >
             <Tabs.Trigger value="servers" data-slot="tab" class="text-12-regular" classes={{ button: "!px-0" }}>
               {sortedServers().length > 0 ? `${sortedServers().length} ` : ""}
@@ -230,55 +230,57 @@ export function StatusModal(props: { directory: string }) {
           <Tabs.Content value="servers">
             <div class="flex flex-col p-2">
               <div class="flex flex-col p-3 rounded-sm min-h-[160px]">
-                <For each={sortedServers()}>
-                  {(s) => {
-                    const key = ServerConnection.key(s)
-                    const isBlocked = () => health[key]?.healthy === false
-                    return (
-                      <button
-                        type="button"
-                        class="flex items-center gap-2 w-full h-8 pl-3 pr-1.5 py-1.5 rounded-md transition-colors text-left"
-                        classList={{
-                          "hover:bg-surface-raised-base-hover": !isBlocked(),
-                          "cursor-not-allowed": isBlocked(),
-                        }}
-                        aria-disabled={isBlocked()}
-                        onClick={() => {
-                          if (isBlocked()) return
-                          server.setActive(key)
-                          navigate("/")
-                          dialog.close()
-                        }}
-                      >
-                        <ServerHealthIndicator health={health[key]} />
-                        <ServerRow
-                          conn={s}
-                          dimmed={isBlocked()}
-                          status={health[key]}
-                          class="flex items-center gap-2 w-full min-w-0"
-                          nameClass="text-14-regular text-text-base truncate"
-                          versionClass="text-12-regular text-text-weak truncate"
-                          badge={
-                            <Show when={key === defaultServer.key()}>
-                              <span class="text-11-regular text-text-base bg-surface-base px-1.5 py-0.5 rounded-md">
-                                {language.t("common.default")}
-                              </span>
-                            </Show>
-                          }
+                <div class="flex flex-col gap-0.5">
+                  <For each={sortedServers()}>
+                    {(s) => {
+                      const key = ServerConnection.key(s)
+                      const isBlocked = () => health[key]?.healthy === false
+                      return (
+                        <button
+                          type="button"
+                          class="flex items-center gap-2 w-full h-8 pl-3 pr-1.5 py-1.5 rounded-md transition-colors text-left"
+                          classList={{
+                            "hover:bg-surface-raised-base-hover": !isBlocked(),
+                            "cursor-not-allowed": isBlocked(),
+                          }}
+                          aria-disabled={isBlocked()}
+                          onClick={() => {
+                            if (isBlocked()) return
+                            server.setActive(key)
+                            navigate("/")
+                            dialog.close()
+                          }}
                         >
-                          <div class="flex-1" />
-                          <Show when={server.current && key === ServerConnection.key(server.current)}>
-                            <Icon name="check" size="small" class="text-icon-weak shrink-0" />
-                          </Show>
-                        </ServerRow>
-                      </button>
-                    )
-                  }}
-                </For>
+                          <ServerHealthIndicator health={health[key]} />
+                          <ServerRow
+                            conn={s}
+                            dimmed={isBlocked()}
+                            status={health[key]}
+                            class="flex items-center gap-2 w-full min-w-0"
+                            nameClass="text-14-regular text-text-base truncate"
+                            versionClass="text-12-regular text-text-weak truncate"
+                            badge={
+                              <Show when={key === defaultServer.key()}>
+                                <span class="text-11-regular text-text-base bg-surface-base px-1.5 py-0.5 rounded-md">
+                                  {language.t("common.default")}
+                                </span>
+                              </Show>
+                            }
+                          >
+                            <div class="flex-1" />
+                            <Show when={server.current && key === ServerConnection.key(server.current)}>
+                              <Icon name="check" size="small" class="text-icon-weak shrink-0" />
+                            </Show>
+                          </ServerRow>
+                        </button>
+                      )
+                    }}
+                  </For>
+                </div>
 
                 <Button
                   variant="secondary"
-                  class="mt-3 self-start h-8 px-3 py-1.5"
+                  class="mt-5 self-start h-8 px-3 py-1.5"
                   onClick={() => dialog.show(() => <DialogSelectServer />, defaultServer.refresh)}
                 >
                   {language.t("status.popover.action.manageServers")}
@@ -298,39 +300,41 @@ export function StatusModal(props: { directory: string }) {
                     </div>
                   }
                 >
-                  <For each={mcpNames()}>
-                    {(name) => {
-                      const status = () => mcpStatus(name)
-                      const enabled = () => status() === "connected"
-                      return (
-                        <button
-                          type="button"
-                          class="flex items-center gap-2 w-full h-8 pl-3 pr-2 py-1 rounded-md hover:bg-surface-raised-base-hover transition-colors text-left"
-                          onClick={() => mcp.toggle(name)}
-                          disabled={mcp.loading() === name}
-                        >
-                          <div
-                            classList={{
-                              "size-1.5 rounded-full shrink-0": true,
-                              "bg-icon-success-base": status() === "connected",
-                              "bg-icon-critical-base": status() === "failed",
-                              "bg-border-weak-base": status() === "disabled",
-                              "bg-icon-warning-base":
-                                status() === "needs_auth" || status() === "needs_client_registration",
-                            }}
-                          />
-                          <span class="text-14-regular text-text-base truncate flex-1">{name}</span>
-                          <div onClick={(event) => event.stopPropagation()}>
-                            <Switch
-                              checked={enabled()}
-                              disabled={mcp.loading() === name}
-                              onChange={() => mcp.toggle(name)}
+                  <div class="flex flex-col gap-0.5">
+                    <For each={mcpNames()}>
+                      {(name) => {
+                        const status = () => mcpStatus(name)
+                        const enabled = () => status() === "connected"
+                        return (
+                          <button
+                            type="button"
+                            class="flex items-center gap-2 w-full h-8 pl-3 pr-2 py-1 rounded-md hover:bg-surface-raised-base-hover transition-colors text-left"
+                            onClick={() => mcp.toggle(name)}
+                            disabled={mcp.loading() === name}
+                          >
+                            <div
+                              classList={{
+                                "size-1.5 rounded-full shrink-0": true,
+                                "bg-icon-success-base": status() === "connected",
+                                "bg-icon-critical-base": status() === "failed",
+                                "bg-border-weak-base": status() === "disabled",
+                                "bg-icon-warning-base":
+                                  status() === "needs_auth" || status() === "needs_client_registration",
+                              }}
                             />
-                          </div>
-                        </button>
-                      )
-                    }}
-                  </For>
+                            <span class="text-14-regular text-text-base truncate flex-1">{name}</span>
+                            <div onClick={(event) => event.stopPropagation()}>
+                              <Switch
+                                checked={enabled()}
+                                disabled={mcp.loading() === name}
+                                onChange={() => mcp.toggle(name)}
+                              />
+                            </div>
+                          </button>
+                        )
+                      }}
+                    </For>
+                  </div>
                 </Show>
               </div>
             </div>
@@ -347,20 +351,22 @@ export function StatusModal(props: { directory: string }) {
                     </div>
                   }
                 >
-                  <For each={lspItems()}>
-                    {(item) => (
-                      <div class="flex items-center gap-2 w-full px-2 py-1">
-                        <div
-                          classList={{
-                            "size-1.5 rounded-full shrink-0": true,
-                            "bg-icon-success-base": item.status === "connected",
-                            "bg-icon-critical-base": item.status === "error",
-                          }}
-                        />
-                        <span class="text-14-regular text-text-base truncate">{item.name || item.id}</span>
-                      </div>
-                    )}
-                  </For>
+                  <div class="flex flex-col gap-0.5">
+                    <For each={lspItems()}>
+                      {(item) => (
+                        <div class="flex items-center gap-2 w-full px-2 py-1">
+                          <div
+                            classList={{
+                              "size-1.5 rounded-full shrink-0": true,
+                              "bg-icon-success-base": item.status === "connected",
+                              "bg-icon-critical-base": item.status === "error",
+                            }}
+                          />
+                          <span class="text-14-regular text-text-base truncate">{item.name || item.id}</span>
+                        </div>
+                      )}
+                    </For>
+                  </div>
                 </Show>
               </div>
             </div>
@@ -373,14 +379,16 @@ export function StatusModal(props: { directory: string }) {
                   when={plugins().length > 0}
                   fallback={<div class="text-14-regular text-text-base text-center my-auto">{pluginEmpty()}</div>}
                 >
-                  <For each={plugins()}>
-                    {(plugin) => (
-                      <div class="flex items-center gap-2 w-full px-2 py-1">
-                        <div class="size-1.5 rounded-full shrink-0 bg-icon-success-base" />
-                        <span class="text-14-regular text-text-base truncate">{plugin}</span>
-                      </div>
-                    )}
-                  </For>
+                  <div class="flex flex-col gap-0.5">
+                    <For each={plugins()}>
+                      {(plugin) => (
+                        <div class="flex items-center gap-2 w-full px-2 py-1">
+                          <div class="size-1.5 rounded-full shrink-0 bg-icon-success-base" />
+                          <span class="text-14-regular text-text-base truncate">{plugin}</span>
+                        </div>
+                      )}
+                    </For>
+                  </div>
                 </Show>
               </div>
             </div>

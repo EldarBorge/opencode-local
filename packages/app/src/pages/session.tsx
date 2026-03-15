@@ -39,7 +39,6 @@ import { useSettings } from "@/context/settings"
 import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
 import { type FollowupDraft, sendFollowupDraft } from "@/components/prompt-input/submit"
-import { working } from "@/pages/session/activity"
 import { createSessionComposerState, SessionComposerRegion } from "@/pages/session/composer"
 import { createOpenReviewFile, createSessionTabs, createSizing, focusTerminalById } from "@/pages/session/helpers"
 import { MessageTimeline } from "@/pages/session/message-timeline"
@@ -1362,7 +1361,8 @@ export default function Page() {
     })
 
   const busy = (sessionID: string) => {
-    return working(sync.data.session_status[sessionID])
+    const status = sync.data.session_status[sessionID]
+    return status !== undefined && status.type !== "idle"
   }
 
   const queuedFollowups = createMemo(() => {

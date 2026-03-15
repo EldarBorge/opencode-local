@@ -15,7 +15,6 @@ import { useLanguage } from "@/context/language"
 import { getAvatarColors, type LocalProject, useLayout } from "@/context/layout"
 import { useNotification } from "@/context/notification"
 import { usePermission } from "@/context/permission"
-import { working } from "@/pages/session/activity"
 import { messageAgentColor } from "@/utils/agent"
 import { sessionPermissionRequest } from "../session/composer/session-request-tree"
 import { hasProjectPermissions } from "./helpers"
@@ -205,7 +204,8 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
   })
   const isWorking = createMemo(() => {
     if (hasPermissions()) return false
-    return working(sessionStore.session_status[props.session.id])
+    const status = sessionStore.session_status[props.session.id]
+    return status !== undefined && status.type !== "idle"
   })
 
   const tint = createMemo(() => {

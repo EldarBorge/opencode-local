@@ -13,6 +13,7 @@ import { useArgs } from "./args"
 import { useSDK } from "./sdk"
 import { RGBA } from "@opentui/core"
 import { Filesystem } from "@/util/filesystem"
+import * as Fast from "@/provider/fast"
 
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
@@ -112,12 +113,14 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           modelID: string
         }[]
         variant: Record<string, string | undefined>
+        fast: Record<string, boolean | undefined>
       }>({
         ready: false,
         model: {},
         recent: [],
         favorite: [],
         variant: {},
+        fast: {},
       })
 
       const filePath = path.join(Global.Path.state, "model.json")
@@ -135,6 +138,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           recent: modelStore.recent,
           favorite: modelStore.favorite,
           variant: modelStore.variant,
+          fast: modelStore.fast,
         })
       }
 
@@ -143,6 +147,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (Array.isArray(x.recent)) setModelStore("recent", x.recent)
           if (Array.isArray(x.favorite)) setModelStore("favorite", x.favorite)
           if (typeof x.variant === "object" && x.variant !== null) setModelStore("variant", x.variant)
+          if (typeof x.fast === "object" && x.fast !== null) setModelStore("fast", x.fast)
         })
         .catch(() => {})
         .finally(() => {
@@ -356,6 +361,36 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               return
             }
             this.set(variants[index + 1])
+          },
+        },
+        fast: {
+          selected() {
+            const m = currentModel()
+            if (!m) return false
+            const key = `${m.providerID}/${m.modelID}`
+            return modelStore.fast[key] === true
+          },
+          current() {
+            return this.selected() && this.available()
+          },
+          available() {
+            const m = currentModel()
+            if (!m) return false
+            const provider = sync.data.provider.find((x) => x.id === m.providerID)
+            const info = provider?.models[m.modelID]
+            if (!info) return false
+            return Fast.enabled(info, { codex: info.providerID === "openai" })
+          },
+          set(value: boolean) {
+            const m = currentModel()
+            if (!m) return
+            if (value && !this.available()) return
+            const key = `${m.providerID}/${m.modelID}`
+            setModelStore("fast", key, value || undefined)
+            save()
+          },
+          toggle() {
+            this.set(!this.current())
           },
         },
       }

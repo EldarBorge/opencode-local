@@ -353,6 +353,14 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
         slash: "model",
         onSelect: () => dialog.show(() => <DialogSelectModel model={local.model} />),
       }),
+      modelCommand({
+        id: "model.fast.toggle",
+        title: language.t(local.model.fast.current() ? "command.model.fast.disable" : "command.model.fast.enable"),
+        description: language.t("command.model.fast.description"),
+        slash: "fast",
+        disabled: !local.model.fast.available(),
+        onSelect: () => local.model.fast.toggle(),
+      }),
       mcpCommand({
         id: "mcp.toggle",
         title: language.t("command.mcp.toggle"),

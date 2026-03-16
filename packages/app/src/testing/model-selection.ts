@@ -7,20 +7,23 @@ type State = {
   agent?: string
   model?: ModelKey | null
   variant?: string | null
+  fast?: boolean
 }
 
 export type ModelProbeState = {
   dir?: string
   sessionID?: string
   last?: {
-    type: "agent" | "model" | "variant"
+    type: "agent" | "model" | "variant" | "fast"
     agent?: string
     model?: ModelKey | null
     variant?: string | null
+    fast?: boolean
   }
   agent?: string
   model?: (ModelKey & { name?: string }) | undefined
   variant?: string | null
+  fast?: boolean
   selected?: string | null
   configured?: string
   pick?: State

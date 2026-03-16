@@ -34,6 +34,7 @@ export type FollowupDraft = {
   agent: string
   model: { providerID: string; modelID: string }
   variant?: string
+  fast?: boolean
 }
 
 type FollowupSendInput = {
@@ -88,6 +89,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
         agent: input.draft.agent,
         model: `${input.draft.model.providerID}/${input.draft.model.modelID}`,
         variant: input.draft.variant,
+        fast: input.draft.fast,
         parts: images.map((attachment) => ({
           id: Identifier.ascending("part"),
           type: "file" as const,
@@ -122,6 +124,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
     agent: input.draft.agent,
     model: input.draft.model,
     variant: input.draft.variant,
+    fast: input.draft.fast,
   }
 
   const add = () =>
@@ -156,6 +159,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
       messageID,
       parts: requestParts,
       variant: input.draft.variant,
+      fast: input.draft.fast,
     })
     return true
   } catch (err) {
@@ -297,6 +301,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     const currentModel = local.model.current()
     const currentAgent = local.agent.current()
     const variant = local.model.variant.current()
+    const fast = local.model.fast.current()
     if (!currentModel || !currentAgent) {
       showToast({
         title: language.t("prompt.toast.modelAgentRequired.title"),
@@ -398,6 +403,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       agent,
       model,
       variant,
+      fast,
     }
 
     const clearInput = () => {
@@ -461,6 +467,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
             agent,
             model: `${model.providerID}/${model.modelID}`,
             variant,
+            fast,
             parts: images.map((attachment) => ({
               id: Identifier.ascending("part"),
               type: "file" as const,

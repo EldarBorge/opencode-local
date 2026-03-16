@@ -1023,6 +1023,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
 
   const variants = createMemo(() => ["default", ...local.model.variant.list()])
+  const fast = createMemo(() => local.model.fast.available())
+  const fastLabel = createMemo(() =>
+    language.t(local.model.fast.current() ? "command.model.fast.disable" : "command.model.fast.enable"),
+  )
   const accepting = createMemo(() => {
     const id = params.id
     if (!id) return permission.isAutoAcceptingDirectory(sdk.directory)
@@ -1534,6 +1538,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     />
                   </TooltipKeybind>
                 </div>
+                <Show when={fast()}>
+                  <Tooltip placement="top" gutter={8} value={fastLabel()}>
+                    <Button
+                      data-action="prompt-fast"
+                      variant="ghost"
+                      onClick={() => local.model.fast.toggle()}
+                      class="h-7 px-2 shrink-0 text-13-medium"
+                      classList={{
+                        "text-text-base": !local.model.fast.current(),
+                        "text-icon-warning-base bg-surface-warning-base": local.model.fast.current(),
+                      }}
+                      style={control()}
+                      aria-label={fastLabel()}
+                      aria-pressed={local.model.fast.current()}
+                    >
+                      {language.t("command.model.fast.label")}
+                    </Button>
+                  </Tooltip>
+                </Show>
                 <TooltipKeybind
                   placement="top"
                   gutter={8}

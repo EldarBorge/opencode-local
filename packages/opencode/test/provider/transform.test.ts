@@ -176,6 +176,70 @@ describe("ProviderTransform.options - gpt-5 textVerbosity", () => {
   })
 })
 
+describe("ProviderTransform.fast", () => {
+  const createModel = (input: { providerID: string; modelID: string; npm: string }) =>
+    ({
+      id: input.modelID,
+      providerID: input.providerID,
+      api: {
+        id: input.modelID,
+        url: "https://example.com",
+        npm: input.npm,
+      },
+      name: input.modelID,
+      capabilities: {
+        temperature: true,
+        reasoning: true,
+        attachment: true,
+        toolcall: true,
+        input: { text: true, audio: false, image: true, video: false, pdf: false },
+        output: { text: true, audio: false, image: false, video: false, pdf: false },
+        interleaved: false,
+      },
+      cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+      limit: { context: 200000, output: 8192 },
+      status: "active",
+      options: {},
+      headers: {},
+    }) as any
+
+  test("uses speed fast for anthropic opus 4.6", () => {
+    const model = createModel({
+      providerID: "anthropic",
+      modelID: "claude-opus-4-6",
+      npm: "@ai-sdk/anthropic",
+    })
+    expect(ProviderTransform.fast(model)).toEqual({ speed: "fast" })
+  })
+
+  test("uses priority service tier for openai gpt-5 codex models", () => {
+    const model = createModel({
+      providerID: "openai",
+      modelID: "gpt-5.4",
+      npm: "@ai-sdk/openai",
+    })
+    expect(ProviderTransform.fast(model, { codex: true })).toEqual({ serviceTier: "priority" })
+  })
+
+  test("returns empty options for unsupported models", () => {
+    const model = createModel({
+      providerID: "anthropic",
+      modelID: "claude-sonnet-4-6",
+      npm: "@ai-sdk/anthropic",
+    })
+    expect(ProviderTransform.fast(model)).toEqual({})
+  })
+
+  test("returns empty options for openai api mode", () => {
+    const model = createModel({
+      providerID: "openai",
+      modelID: "gpt-5.4",
+      npm: "@ai-sdk/openai",
+    })
+    expect(ProviderTransform.fast(model)).toEqual({})
+  })
+})
+
 describe("ProviderTransform.options - gateway", () => {
   const sessionID = "test-session-123"
 

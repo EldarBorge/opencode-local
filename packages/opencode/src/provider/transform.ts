@@ -6,6 +6,7 @@ import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
 import { iife } from "@/util/iife"
 import { Flag } from "@/flag/flag"
+import * as Fast from "./fast"
 
 type Modality = NonNullable<ModelsDev.Model["modalities"]>["input"][number]
 
@@ -903,6 +904,10 @@ export namespace ProviderTransform {
 
     const key = sdkKey(model.api.npm) ?? model.providerID
     return { [key]: options }
+  }
+
+  export function fast(model: Provider.Model, input?: { codex?: boolean }) {
+    return Fast.options(model, input)
   }
 
   export function maxOutputTokens(model: Provider.Model): number {

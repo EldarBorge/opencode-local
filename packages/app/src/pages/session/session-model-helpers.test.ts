@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
 import { resetSessionModel, syncSessionModel } from "./session-model-helpers"
 
-const message = (input?: Partial<Pick<UserMessage, "agent" | "model" | "variant">>) =>
+const message = (input?: Partial<Pick<UserMessage, "agent" | "model" | "variant" | "fast">>) =>
   ({
     id: "msg",
     sessionID: "session",
@@ -30,6 +30,24 @@ describe("syncSessionModel", () => {
     )
 
     expect(calls).toEqual([message({ variant: "high" })])
+  })
+
+  test("restores fast mode from the last message", () => {
+    const calls: unknown[] = []
+
+    syncSessionModel(
+      {
+        session: {
+          restore(value) {
+            calls.push(value)
+          },
+          reset() {},
+        },
+      },
+      message({ fast: true }),
+    )
+
+    expect(calls).toEqual([message({ fast: true })])
   })
 })
 

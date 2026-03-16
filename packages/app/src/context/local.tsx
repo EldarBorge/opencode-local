@@ -8,6 +8,7 @@ import { useProviders } from "@/hooks/use-providers"
 import { modelEnabled, modelProbe } from "@/testing/model-selection"
 import { Persist, persisted } from "@/utils/persist"
 import { cycleModelVariant, getConfiguredAgentVariant, resolveModelVariant } from "./model-variant"
+import * as Fast from "./model-fast"
 import { useSDK } from "./sdk"
 import { useSync } from "./sync"
 
@@ -17,6 +18,7 @@ type State = {
   agent?: string
   model?: ModelKey
   variant?: string | null
+  fast?: boolean
 }
 
 type Saved = {
@@ -79,10 +81,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       current?: string
       draft?: State
       last?: {
-        type: "agent" | "model" | "variant"
+        type: "agent" | "model" | "variant" | "fast"
         agent?: string
         model?: ModelKey | null
         variant?: string | null
+        fast?: boolean
       }
     }>({
       current: list()[0]?.name,
@@ -191,11 +194,13 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             agent: item.name,
             model: item.model,
             variant: item.variant ?? null,
+            fast: scope()?.fast,
           })
           const next = {
             agent: item.name,
             model: item.model,
             variant: item.variant,
+            fast: scope()?.fast,
           } satisfies State
           const session = id()
           if (session) {
@@ -249,6 +254,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         agent: agent.current()?.name,
         model: model ? { providerID: model.provider.id, modelID: model.id } : undefined,
         variant: selected(),
+        fast: !!scope()?.fast && Fast.enabled(model),
       } satisfies State
     }
 
@@ -296,6 +302,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             agent: agent.current()?.name,
             model: item ?? null,
             variant: selected(),
+            fast: model.fast.current(),
           })
           write({ model: item })
           if (!item) return
@@ -333,6 +340,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               agent: agent.current()?.name,
               model: model ? { providerID: model.provider.id, modelID: model.id } : null,
               variant: value ?? null,
+              fast: !!scope()?.fast && Fast.enabled(model),
             })
             write({ variant: value ?? null })
           })
@@ -347,6 +355,34 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               configured: this.configured(),
             }),
           )
+        },
+      },
+      fast: {
+        selected() {
+          return scope()?.fast === true
+        },
+        current() {
+          return this.selected() && this.available()
+        },
+        available() {
+          return Fast.enabled(current())
+        },
+        set(value: boolean) {
+          if (value && !this.available()) return
+          const model = current()
+          batch(() => {
+            setStore("last", {
+              type: "fast",
+              agent: agent.current()?.name,
+              model: model ? { providerID: model.provider.id, modelID: model.id } : null,
+              variant: selected(),
+              fast: value,
+            })
+            write({ fast: value || undefined })
+          })
+        },
+        toggle() {
+          this.set(!this.current())
         },
       },
     }
@@ -372,7 +408,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           handoff.set(handoffKey(dir, session), next)
           setStore("draft", undefined)
         },
-        restore(msg: { sessionID: string; agent: string; model: ModelKey; variant?: string }) {
+        restore(msg: { sessionID: string; agent: string; model: ModelKey; variant?: string; fast?: boolean }) {
           const session = id()
           if (!session) return
           if (msg.sessionID !== session) return
@@ -383,6 +419,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             agent: msg.agent,
             model: msg.model,
             variant: msg.variant ?? null,
+            fast: msg.fast === true,
           })
         },
       },
@@ -405,6 +442,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               }
             : undefined,
           variant: result.model.variant.current() ?? null,
+          fast: result.model.fast.current(),
           selected: result.model.variant.selected(),
           configured: result.model.variant.configured(),
           pick: scope(),

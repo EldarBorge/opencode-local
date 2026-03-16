@@ -101,11 +101,15 @@ export namespace LLM {
           sessionID: input.sessionID,
           providerOptions: provider.options,
         })
+    const fast = (
+      input.small || !input.user.fast ? {} : ProviderTransform.fast(input.model, { codex: isCodex })
+    ) as Record<string, any>
     const options: Record<string, any> = pipe(
-      base,
-      mergeDeep(input.model.options),
-      mergeDeep(input.agent.options),
-      mergeDeep(variant),
+      base as Record<string, any>,
+      mergeDeep(input.model.options as Record<string, any>),
+      mergeDeep(input.agent.options as Record<string, any>),
+      mergeDeep(variant as Record<string, any>),
+      mergeDeep(fast),
     )
     if (isCodex) {
       options.instructions = SystemPrompt.instructions()

@@ -164,7 +164,8 @@ export function Prompt(props: PromptProps) {
       if (msg.agent && isPrimaryAgent) {
         local.agent.set(msg.agent)
         if (msg.model) local.model.set(msg.model)
-        if (msg.variant) local.model.variant.set(msg.variant)
+        local.model.variant.set(msg.variant)
+        local.model.fast.set(msg.fast === true)
       }
     }
   })
@@ -328,6 +329,19 @@ export function Prompt(props: PromptProps) {
           })
           restoreExtmarksFromParts(updatedNonTextParts)
           input.cursorOffset = Bun.stringWidth(content)
+        },
+      },
+      {
+        title: local.model.fast.current() ? "Disable fast mode" : "Enable fast mode",
+        value: "model.fast",
+        category: "Model",
+        enabled: local.model.fast.available(),
+        slash: {
+          name: "fast",
+        },
+        onSelect: (dialog) => {
+          local.model.fast.toggle()
+          dialog.clear()
         },
       },
       {
@@ -586,6 +600,7 @@ export function Prompt(props: PromptProps) {
     // Capture mode before it gets reset
     const currentMode = store.mode
     const variant = local.model.variant.current()
+    const fast = local.model.fast.current()
 
     if (store.mode === "shell") {
       sdk.client.session.shell({
@@ -621,6 +636,7 @@ export function Prompt(props: PromptProps) {
         model: `${selectedModel.providerID}/${selectedModel.modelID}`,
         messageID,
         variant,
+        fast,
         parts: nonTextParts
           .filter((x) => x.type === "file")
           .map((x) => ({
@@ -637,6 +653,7 @@ export function Prompt(props: PromptProps) {
           agent: local.agent.current().name,
           model: selectedModel,
           variant,
+          fast,
           parts: [
             {
               id: PartID.ascending(),
@@ -764,6 +781,8 @@ export function Prompt(props: PromptProps) {
     const current = local.model.variant.current()
     return !!current
   })
+
+  const showFast = createMemo(() => local.model.fast.current())
 
   const placeholderText = createMemo(() => {
     if (props.sessionID) return undefined
@@ -1026,6 +1045,12 @@ export function Prompt(props: PromptProps) {
                     <text fg={theme.textMuted}>·</text>
                     <text>
                       <span style={{ fg: theme.warning, bold: true }}>{local.model.variant.current()}</span>
+                    </text>
+                  </Show>
+                  <Show when={showFast()}>
+                    <text fg={theme.textMuted}>·</text>
+                    <text>
+                      <span style={{ fg: theme.info, bold: true }}>fast</span>
                     </text>
                   </Show>
                 </box>

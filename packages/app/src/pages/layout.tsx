@@ -111,6 +111,7 @@ export default function Layout(props: ParentProps) {
   let scrollContainerRef: HTMLDivElement | undefined
 
   const params = useParams()
+  const home = createMemo(() => !params.dir)
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const layout = useLayout()
@@ -2241,7 +2242,7 @@ export default function Layout(props: ParentProps) {
   const sidebarContent = (mobile?: boolean) => (
     <SidebarContent
       mobile={mobile}
-      opened={() => layout.sidebar.opened()}
+      opened={() => (home() ? false : layout.sidebar.opened())}
       aimMove={aim.move}
       projects={projects}
       renderProject={(project) => (
@@ -2285,7 +2286,7 @@ export default function Layout(props: ParentProps) {
                 "absolute inset-y-0 left-0": true,
                 "z-10": true,
               }}
-              style={{ width: `${Math.max(layout.sidebar.width(), 244)}px` }}
+              style={{ width: home() ? "4rem" : `${Math.max(layout.sidebar.width(), 244)}px` }}
               ref={(el) => {
                 setState("nav", el)
               }}
@@ -2294,13 +2295,14 @@ export default function Layout(props: ParentProps) {
               }}
               onMouseLeave={() => {
                 aim.reset()
+                if (home()) return
                 if (!sidebarHovering()) return
 
                 arm()
               }}
             >
               <div class="@container w-full h-full contain-strict">{sidebarContent()}</div>
-              <Show when={layout.sidebar.opened()}>
+              <Show when={!home() && layout.sidebar.opened()}>
                 <div onPointerDown={() => setState("sizing", true)}>
                   <ResizeHandle
                     direction="horizontal"
@@ -2325,46 +2327,54 @@ export default function Layout(props: ParentProps) {
               style={{ left: "calc(4rem + 12px)" }}
             />
 
-            <div class="xl:hidden">
-              <div
-                classList={{
-                  "fixed inset-x-0 top-10 bottom-0 z-40 transition-opacity duration-200": true,
-                  "opacity-100 pointer-events-auto": layout.mobileSidebar.opened(),
-                  "opacity-0 pointer-events-none": !layout.mobileSidebar.opened(),
-                }}
-                onClick={(e) => {
-                  if (e.target === e.currentTarget) layout.mobileSidebar.hide()
-                }}
-              />
-              <nav
-                aria-label={language.t("sidebar.nav.projectsAndSessions")}
-                data-component="sidebar-nav-mobile"
-                classList={{
-                  "@container fixed top-10 bottom-0 left-0 z-50 w-full max-w-[400px] overflow-hidden border-r border-border-weaker-base bg-background-base transition-transform duration-200 ease-out": true,
-                  "translate-x-0": layout.mobileSidebar.opened(),
-                  "-translate-x-full": !layout.mobileSidebar.opened(),
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {sidebarContent(true)}
-              </nav>
-            </div>
+            <Show when={!home()}>
+              <div class="xl:hidden">
+                <div
+                  classList={{
+                    "fixed inset-x-0 top-10 bottom-0 z-40 transition-opacity duration-200": true,
+                    "opacity-100 pointer-events-auto": layout.mobileSidebar.opened(),
+                    "opacity-0 pointer-events-none": !layout.mobileSidebar.opened(),
+                  }}
+                  onClick={(e) => {
+                    if (e.target === e.currentTarget) layout.mobileSidebar.hide()
+                  }}
+                />
+                <nav
+                  aria-label={language.t("sidebar.nav.projectsAndSessions")}
+                  data-component="sidebar-nav-mobile"
+                  classList={{
+                    "@container fixed top-10 bottom-0 left-0 z-50 w-full max-w-[400px] overflow-hidden border-r border-border-weaker-base bg-background-base transition-transform duration-200 ease-out": true,
+                    "translate-x-0": layout.mobileSidebar.opened(),
+                    "-translate-x-full": !layout.mobileSidebar.opened(),
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {sidebarContent(true)}
+                </nav>
+              </div>
+            </Show>
 
             <div
               classList={{
                 "absolute inset-0": true,
-                "xl:inset-y-0 xl:right-0 xl:left-[var(--main-left)]": true,
+                "xl:inset-y-0 xl:right-0": true,
+                "xl:left-[var(--main-left)]": true,
                 "z-20": true,
                 "transition-[left] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[left] motion-reduce:transition-none":
                   !state.sizing,
               }}
               style={{
-                "--main-left": layout.sidebar.opened() ? `${Math.max(layout.sidebar.width(), 244)}px` : "4rem",
+                "--main-left": home()
+                  ? "4rem"
+                  : layout.sidebar.opened()
+                    ? `${Math.max(layout.sidebar.width(), 244)}px`
+                    : "4rem",
               }}
             >
               <main
                 classList={{
-                  "size-full overflow-x-hidden flex flex-col items-start contain-strict border-t border-border-weak-base bg-background-base xl:border-l xl:rounded-tl-[12px]": true,
+                  "size-full overflow-x-hidden flex flex-col items-start contain-strict border-t border-border-weak-base bg-background-base": true,
+                  "xl:border-l xl:rounded-tl-[12px]": true,
                 }}
               >
                 <Show when={!autoselecting()} fallback={<div class="size-full" />}>
@@ -2373,43 +2383,47 @@ export default function Layout(props: ParentProps) {
               </main>
             </div>
 
-            <div
-              classList={{
-                "hidden xl:flex absolute inset-y-0 left-16 z-30": true,
-                "opacity-100 translate-x-0 pointer-events-auto": state.peeked && !layout.sidebar.opened(),
-                "opacity-0 -translate-x-2 pointer-events-none": !state.peeked || layout.sidebar.opened(),
-                "transition-[opacity,transform] motion-reduce:transition-none": true,
-                "duration-180 ease-out": state.peeked && !layout.sidebar.opened(),
-                "duration-120 ease-in": !state.peeked || layout.sidebar.opened(),
-              }}
-              onMouseMove={disarm}
-              onMouseEnter={() => {
-                disarm()
-                aim.reset()
-              }}
-              onPointerDown={disarm}
-              onMouseLeave={() => {
-                arm()
-              }}
-            >
-              <Show when={peekProject()}>
-                <SidebarPanel project={peekProject} merged={false} />
-              </Show>
-            </div>
+            <Show when={!home()}>
+              <div
+                classList={{
+                  "hidden xl:flex absolute inset-y-0 left-16 z-30": true,
+                  "opacity-100 translate-x-0 pointer-events-auto": state.peeked && !layout.sidebar.opened(),
+                  "opacity-0 -translate-x-2 pointer-events-none": !state.peeked || layout.sidebar.opened(),
+                  "transition-[opacity,transform] motion-reduce:transition-none": true,
+                  "duration-180 ease-out": state.peeked && !layout.sidebar.opened(),
+                  "duration-120 ease-in": !state.peeked || layout.sidebar.opened(),
+                }}
+                onMouseMove={disarm}
+                onMouseEnter={() => {
+                  disarm()
+                  aim.reset()
+                }}
+                onPointerDown={disarm}
+                onMouseLeave={() => {
+                  arm()
+                }}
+              >
+                <Show when={peekProject()}>
+                  <SidebarPanel project={peekProject} merged={false} />
+                </Show>
+              </div>
+            </Show>
 
-            <div
-              classList={{
-                "hidden xl:block pointer-events-none absolute inset-y-0 right-0 z-25 overflow-hidden": true,
-                "opacity-100 translate-x-0": state.peeked && !layout.sidebar.opened(),
-                "opacity-0 -translate-x-2": !state.peeked || layout.sidebar.opened(),
-                "transition-[opacity,transform] motion-reduce:transition-none": true,
-                "duration-180 ease-out": state.peeked && !layout.sidebar.opened(),
-                "duration-120 ease-in": !state.peeked || layout.sidebar.opened(),
-              }}
-              style={{ left: `calc(4rem + ${Math.max(Math.max(layout.sidebar.width(), 244) - 64, 0)}px)` }}
-            >
-              <div class="h-full w-px" style={{ "box-shadow": "var(--shadow-sidebar-overlay)" }} />
-            </div>
+            <Show when={!home()}>
+              <div
+                classList={{
+                  "hidden xl:block pointer-events-none absolute inset-y-0 right-0 z-25 overflow-hidden": true,
+                  "opacity-100 translate-x-0": state.peeked && !layout.sidebar.opened(),
+                  "opacity-0 -translate-x-2": !state.peeked || layout.sidebar.opened(),
+                  "transition-[opacity,transform] motion-reduce:transition-none": true,
+                  "duration-180 ease-out": state.peeked && !layout.sidebar.opened(),
+                  "duration-120 ease-in": !state.peeked || layout.sidebar.opened(),
+                }}
+                style={{ left: `calc(4rem + ${Math.max(Math.max(layout.sidebar.width(), 244) - 64, 0)}px)` }}
+              >
+                <div class="h-full w-px" style={{ "box-shadow": "var(--shadow-sidebar-overlay)" }} />
+              </div>
+            </Show>
           </div>
         </div>
         {import.meta.env.DEV && <DebugBar />}

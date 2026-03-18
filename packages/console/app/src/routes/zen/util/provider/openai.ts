@@ -22,6 +22,7 @@ export const openaiHelper: ProviderHelper = () => ({
     ...body,
     ...(workspaceID ? { safety_identifier: workspaceID } : {}),
   }),
+  extractBodyUsage: (body: any) => body?.usage ?? body?.response?.usage,
   createBinaryStreamDecoder: () => undefined,
   streamSeparator: "\n\n",
   createUsageParser: () => {

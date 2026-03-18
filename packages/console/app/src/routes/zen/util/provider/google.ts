@@ -36,6 +36,7 @@ export const googleHelper: ProviderHelper = ({ providerModel }) => ({
   modifyBody: (body: Record<string, any>) => {
     return body
   },
+  extractBodyUsage: (body: any) => body?.usageMetadata,
   createBinaryStreamDecoder: () => undefined,
   streamSeparator: "\r\n\r\n",
   createUsageParser: () => {

@@ -219,20 +219,40 @@ export async function handler(
     // Handle non-streaming response
     if (!isStream) {
       const json = await res.json()
-      const usageInfo = providerInfo.normalizeUsage(json.usage)
-      const costInfo = calculateCost(modelInfo, usageInfo)
-      await trialLimiter?.track(usageInfo)
-      await rateLimiter?.track()
-      await trackUsage(sessionId, billingSource, authInfo, modelInfo, providerInfo, usageInfo, costInfo)
-      await reload(billingSource, authInfo, costInfo)
+      const usage = providerInfo.extractBodyUsage(json)
+
+      if (usage) {
+        const usageInfo = providerInfo.normalizeUsage(usage)
+        const costInfo = calculateCost(modelInfo, usageInfo)
+        await trialLimiter?.track(usageInfo)
+        await rateLimiter?.track()
+        await trackUsage(sessionId, billingSource, authInfo, modelInfo, providerInfo, usageInfo, costInfo)
+        await reload(billingSource, authInfo, costInfo)
+
+        const responseConverter = createResponseConverter(providerInfo.format, opts.format)
+        const body = JSON.stringify(
+          responseConverter({
+            ...json,
+            cost: calculateOccuredCost(billingSource, costInfo),
+          }),
+        )
+        logger.metric({ response_length: body.length })
+        logger.debug("RESPONSE: " + body)
+        dataDumper?.provideResponse(body)
+        dataDumper?.flush()
+        return new Response(body, {
+          status: resStatus,
+          statusText: res.statusText,
+          headers: resHeaders,
+        })
+      }
+
+      logger.debug(
+        "RESPONSE missing usage payload: " + JSON.stringify({ format: providerInfo.format, keys: Object.keys(json ?? {}) }),
+      )
 
       const responseConverter = createResponseConverter(providerInfo.format, opts.format)
-      const body = JSON.stringify(
-        responseConverter({
-          ...json,
-          cost: calculateOccuredCost(billingSource, costInfo),
-        }),
-      )
+      const body = JSON.stringify(responseConverter(json))
       logger.metric({ response_length: body.length })
       logger.debug("RESPONSE: " + body)
       dataDumper?.provideResponse(body)

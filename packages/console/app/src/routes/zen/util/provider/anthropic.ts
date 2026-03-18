@@ -51,6 +51,7 @@ export const anthropicHelper: ProviderHelper = ({ reqModel, providerModel }) => 
             service_tier: "standard_only",
           }),
     }),
+    extractBodyUsage: (body: any) => body?.usage ?? body?.message?.usage,
     createBinaryStreamDecoder: () => {
       if (!isBedrock) return undefined
 

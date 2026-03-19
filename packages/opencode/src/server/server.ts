@@ -1,4 +1,7 @@
+import { streamSSE } from "hono/streaming"
 import { Log } from "../util/log"
+import { Bus } from "../bus"
+import { BusEvent } from "../bus/bus-event"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono } from "hono"
 import { cors } from "hono/cors"
@@ -585,6 +588,8 @@ export namespace Server {
     return result
   }
 
+  export let url: URL
+
   export async function listen(opts: {
     port: number
     hostname: string
@@ -626,6 +631,7 @@ export namespace Server {
     const url = new URL("http://localhost")
     url.hostname = opts.hostname
     url.port = String(addr.port)
+    Server.url = url
 
     const shouldPublishMDNS =
       opts.mdns &&

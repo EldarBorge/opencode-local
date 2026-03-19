@@ -13,6 +13,7 @@ import { Process } from "../util/process"
 import { which } from "../util/which"
 import { Module } from "@opencode-ai/util/module"
 import { spawn } from "./launch"
+import { Npm } from "@/npm"
 
 export namespace LSPServer {
   const log = Log.create({ service: "lsp.server" })

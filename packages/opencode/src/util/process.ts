@@ -16,7 +16,6 @@ export namespace Process {
     abort?: AbortSignal
     kill?: NodeJS.Signals | number
     timeout?: number
-    shell?: string
   }
 
   export interface RunOptions extends Omit<Options, "stdout" | "stderr"> {
@@ -65,7 +64,6 @@ export namespace Process {
       shell: opts.shell,
       env: opts.env === null ? {} : opts.env ? { ...process.env, ...opts.env } : undefined,
       stdio: [opts.stdin ?? "ignore", opts.stdout ?? "ignore", opts.stderr ?? "ignore"],
-      shell: opts.shell,
       windowsHide: process.platform === "win32",
     })
 

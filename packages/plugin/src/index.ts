@@ -165,6 +165,8 @@ export type ProviderHook = {
     reconcile?: (input: {
       provider: Provider
       models: Record<string, Model>
+      auth?: Auth
+      options?: Record<string, unknown>
     }) => Promise<Record<string, Model> | undefined>
   }
 }

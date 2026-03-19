@@ -1,25 +1,12 @@
-const disposers = new Set<{
-  fn: (directory: string) => Promise<void>
-  priority: number
-}>()
+const disposers = new Set<(directory: string) => Promise<void>>()
 
-export function registerDisposer(disposer: (directory: string) => Promise<void>, priority = 0) {
-  const item = {
-    fn: disposer,
-    priority,
-  }
-  disposers.add(item)
+export function registerDisposer(disposer: (directory: string) => Promise<void>) {
+  disposers.add(disposer)
   return () => {
-    disposers.delete(item)
+    disposers.delete(disposer)
   }
 }
 
 export async function disposeInstance(directory: string) {
-  const list = [...disposers].sort((a, b) => a.priority - b.priority)
-  const seen = new Set<number>()
-  for (const item of list) {
-    if (seen.has(item.priority)) continue
-    seen.add(item.priority)
-    await Promise.allSettled(list.filter((x) => x.priority === item.priority).map((x) => x.fn(directory)))
-  }
+  await Promise.allSettled([...disposers].map((disposer) => disposer(directory)))
 }

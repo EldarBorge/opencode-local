@@ -4,6 +4,7 @@ import { Bus } from "../../src/bus"
 import { BusEvent } from "../../src/bus/bus-event"
 import { GlobalBus } from "../../src/bus/global"
 import { Instance } from "../../src/project/instance"
+import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
 
 // ---------------------------------------------------------------------------
@@ -189,6 +190,38 @@ describe("Bus", () => {
       })
 
       expect(all).toEqual(["test.ping"])
+    })
+
+    test("subscribeAll delivers InstanceDisposed via GlobalBus on disposal", async () => {
+      await using tmp = await tmpdir()
+      const all: string[] = []
+
+      await withInstance(tmp.path, async () => {
+        Bus.subscribeAll((evt) => {
+          all.push(evt.type)
+        })
+      })
+
+      await Instance.disposeAll()
+
+      expect(all).toContain(Bus.InstanceDisposed.type)
+    })
+
+    test("manual unsubscribe suppresses InstanceDisposed", async () => {
+      await using tmp = await tmpdir()
+      const all: string[] = []
+      let unsub = () => {}
+
+      await withInstance(tmp.path, async () => {
+        unsub = Bus.subscribeAll((evt) => {
+          all.push(evt.type)
+        })
+      })
+
+      unsub()
+      await Instance.disposeAll()
+
+      expect(all).not.toContain(Bus.InstanceDisposed.type)
     })
   })
 

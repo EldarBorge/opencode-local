@@ -1,11 +1,10 @@
 import z from "zod"
-import { Effect, Fiber, Layer, PubSub, ServiceMap, Stream } from "effect"
+import { Effect, Layer, PubSub, ServiceMap, Stream } from "effect"
 import { Log } from "../util/log"
 import { Instance } from "../project/instance"
 import { BusEvent } from "./bus-event"
 import { GlobalBus } from "./global"
-import { registerDisposer } from "../effect/instance-registry"
-import { forkInstance, runCallbackInstance, runPromiseInstance } from "../effect/runtime"
+import { runCallbackInstance, runPromiseInstance } from "../effect/runtime"
 
 export namespace Bus {
   const log = Log.create({ service: "bus" })
@@ -109,33 +108,22 @@ export namespace Bus {
 
   export function subscribeAll(callback: (event: any) => void) {
     const directory = Instance.directory
-    let manualUnsub = false
 
-    const fiber = forkInstance(
-      Service.use((svc) =>
-        svc.subscribeAll().pipe(Stream.runForEach((msg) => Effect.sync(() => callback(msg)))),
-      ).pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            if (!manualUnsub) {
-              callback({ type: InstanceDisposed.type, properties: { directory } })
-            }
-          }),
-        ),
-      ),
-    )
+    // InstanceDisposed is delivered via GlobalBus because the sync
+    // callback API can't wait for async layer acquisition. The Effect
+    // service's stream ending IS the disposal signal for Effect consumers.
+    const onDispose = (evt: { directory?: string; payload: any }) => {
+      if (evt.payload.type !== InstanceDisposed.type) return
+      if (evt.directory !== directory) return
+      callback(evt.payload)
+      GlobalBus.off("event", onDispose)
+    }
+    GlobalBus.on("event", onDispose)
 
-    // Interrupt the fiber before the layer is invalidated, awaiting
-    // completion so the refCount drops and the scope can close.
-    const unregister = registerDisposer(
-      (dir) => (dir !== directory ? Promise.resolve() : Effect.runPromise(Fiber.interrupt(fiber))),
-      -1,
-    )
-
+    const interrupt = runStream((svc) => svc.subscribeAll(), callback)
     return () => {
-      manualUnsub = true
-      unregister()
-      fiber.interruptUnsafe()
+      GlobalBus.off("event", onDispose)
+      interrupt()
     }
   }
 }

@@ -84,6 +84,19 @@ export namespace Bus {
         )
       }
 
+      // Shut down all PubSubs when the layer is torn down.
+      // This causes Stream.fromPubSub consumers to end, triggering
+      // their ensuring/finalizers.
+      yield* Effect.addFinalizer(() =>
+        Effect.gen(function* () {
+          log.info("shutting down PubSubs")
+          yield* PubSub.shutdown(wildcardPubSub)
+          for (const ps of pubsubs.values()) {
+            yield* PubSub.shutdown(ps)
+          }
+        }),
+      )
+
       return Service.of({ publish, subscribe, subscribeAll })
     }),
   )
@@ -109,9 +122,12 @@ export namespace Bus {
   export function subscribeAll(callback: (event: any) => void) {
     const directory = Instance.directory
 
-    // InstanceDisposed is delivered via GlobalBus because the sync
-    // callback API can't wait for async layer acquisition. The Effect
-    // service's stream ending IS the disposal signal for Effect consumers.
+    // InstanceDisposed is delivered via GlobalBus because the legacy
+    // adapter's fiber starts asynchronously and may not be running when
+    // disposal happens. In the Effect-native path, forkScoped + scope
+    // closure handles this correctly. This bridge can be removed once
+    // upstream PubSub.shutdown properly wakes suspended subscribers:
+    // https://github.com/Effect-TS/effect-smol/issues/TBD
     const onDispose = (evt: { directory?: string; payload: any }) => {
       if (evt.payload.type !== InstanceDisposed.type) return
       if (evt.directory !== directory) return

@@ -1,4 +1,4 @@
-import { Effect, Layer, LayerMap, ServiceMap } from "effect"
+import { Effect, Exit, Fiber, Layer, LayerMap, MutableHashMap, Scope, ServiceMap } from "effect"
 import { Bus } from "@/bus"
 import { File } from "@/file"
 import { FileTime } from "@/file/time"
@@ -59,7 +59,23 @@ export class Instances extends ServiceMap.Service<Instances, LayerMap.LayerMap<s
     Instances,
     Effect.gen(function* () {
       const layerMap = yield* LayerMap.make(lookup, { idleTimeToLive: Infinity })
-      const unregister = registerDisposer((directory) => Effect.runPromise(layerMap.invalidate(directory)))
+
+      // Force-invalidate closes the RcMap entry scope even when refCount > 0.
+      // Standard RcMap.invalidate bails in that case, leaving long-running
+      // consumer fibers orphaned. This is an upstream issue:
+      // https://github.com/Effect-TS/effect-smol/pull/1799
+      const forceInvalidate = (directory: string) =>
+        Effect.gen(function* () {
+          const rcMap = layerMap.rcMap
+          if (rcMap.state._tag === "Closed") return
+          const entry = MutableHashMap.get(rcMap.state.map, directory)
+          if (entry._tag === "None") return
+          MutableHashMap.remove(rcMap.state.map, directory)
+          if (entry.value.fiber) yield* Fiber.interrupt(entry.value.fiber)
+          yield* Scope.close(entry.value.scope, Exit.void)
+        }).pipe(Effect.uninterruptible)
+
+      const unregister = registerDisposer((directory) => Effect.runPromise(forceInvalidate(directory)))
       yield* Effect.addFinalizer(() => Effect.sync(unregister))
       return Instances.of(layerMap)
     }),

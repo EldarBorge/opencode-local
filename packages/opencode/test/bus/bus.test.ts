@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { Deferred, Effect, Stream } from "effect"
 import z from "zod"
 import { Bus } from "../../src/bus"
 import { BusEvent } from "../../src/bus/bus-event"
 import { GlobalBus } from "../../src/bus/global"
 import { Instance } from "../../src/project/instance"
-import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
 
 // ---------------------------------------------------------------------------
@@ -192,7 +192,7 @@ describe("Bus", () => {
       expect(all).toEqual(["test.ping"])
     })
 
-    test("subscribeAll delivers InstanceDisposed via GlobalBus on disposal", async () => {
+    test("subscribeAll delivers InstanceDisposed on disposal", async () => {
       await using tmp = await tmpdir()
       const all: string[] = []
 
@@ -200,10 +200,12 @@ describe("Bus", () => {
         Bus.subscribeAll((evt) => {
           all.push(evt.type)
         })
+        await Bus.publish(TestEvent.Ping, { value: 1 })
       })
 
       await Instance.disposeAll()
 
+      expect(all).toContain("test.ping")
       expect(all).toContain(Bus.InstanceDisposed.type)
     })
 
@@ -279,30 +281,6 @@ describe("Bus", () => {
     })
   })
 
-  describe("instance disposal", () => {
-    test("InstanceDisposed is emitted to GlobalBus on disposal", async () => {
-      await using tmp = await tmpdir()
-      const globalEvents: Array<{ directory?: string; payload: any }> = []
-
-      const handler = (evt: any) => globalEvents.push(evt)
-      GlobalBus.on("event", handler)
-
-      try {
-        await withInstance(tmp.path, async () => {
-          // Instance is active — subscribe so the layer gets created
-          Bus.subscribe(TestEvent.Ping, () => {})
-        })
-
-        await Instance.disposeAll()
-
-        const disposed = globalEvents.find((e) => e.payload.type === "server.instance.disposed")
-        expect(disposed).toBeDefined()
-        expect(disposed!.payload.properties.directory).toBe(tmp.path)
-      } finally {
-        GlobalBus.off("event", handler)
-      }
-    })
-  })
 
   describe("async subscribers", () => {
     test("publish is fire-and-forget (does not await subscriber callbacks)", async () => {
@@ -321,6 +299,74 @@ describe("Bus", () => {
       })
 
       expect(received).toEqual([1])
+    })
+  })
+
+  describe("Effect service", () => {
+    test("subscribeAll stream receives published events", async () => {
+      await using tmp = await tmpdir()
+      const received: string[] = []
+
+      await withInstance(tmp.path, () =>
+        Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const svc = yield* Bus.Service
+              const done = yield* Deferred.make<void>()
+              let count = 0
+
+              yield* Effect.forkScoped(
+                svc.subscribeAll().pipe(
+                  Stream.runForEach((msg) =>
+                    Effect.gen(function* () {
+                      received.push(msg.type)
+                      if (++count >= 2) yield* Deferred.succeed(done, undefined)
+                    }),
+                  ),
+                ),
+              )
+
+              // Let the forked fiber start and subscribe to the PubSub
+              yield* Effect.yieldNow
+
+              yield* svc.publish(TestEvent.Ping, { value: 1 })
+              yield* svc.publish(TestEvent.Pong, { message: "hi" })
+              yield* Deferred.await(done)
+            }),
+          ).pipe(Effect.provide(Bus.layer)),
+        ),
+      )
+
+      expect(received).toEqual(["test.ping", "test.pong"])
+    })
+
+    test("subscribeAll stream ends with ensuring when scope closes", async () => {
+      await using tmp = await tmpdir()
+      let ensuringFired = false
+
+      await withInstance(tmp.path, () =>
+        Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const svc = yield* Bus.Service
+
+              yield* Effect.forkScoped(
+                svc.subscribeAll().pipe(
+                  Stream.runForEach(() => Effect.void),
+                  Effect.ensuring(Effect.sync(() => {
+                    ensuringFired = true
+                  })),
+                ),
+              )
+
+              yield* svc.publish(TestEvent.Ping, { value: 1 })
+              yield* Effect.yieldNow
+            }),
+          ).pipe(Effect.provide(Bus.layer)),
+        ),
+      )
+
+      expect(ensuringFired).toBe(true)
     })
   })
 })

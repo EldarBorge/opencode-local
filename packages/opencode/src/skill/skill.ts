@@ -2,7 +2,7 @@ import os from "os"
 import path from "path"
 import { pathToFileURL } from "url"
 import z from "zod"
-import { Effect, Layer, ServiceMap } from "effect"
+import { Effect, Fiber, Layer, ServiceMap } from "effect"
 import { NamedError } from "@opencode-ai/util/error"
 import type { Agent } from "@/agent/agent"
 import { Bus } from "@/bus"
@@ -54,11 +54,6 @@ export namespace Skill {
   type State = {
     skills: Record<string, Info>
     dirs: Set<string>
-    task?: Promise<void>
-  }
-
-  type Cache = State & {
-    ensure: () => Promise<void>
   }
 
   export interface Interface {
@@ -116,68 +111,6 @@ export namespace Skill {
       })
   }
 
-  // TODO: Migrate to Effect
-  const create = (instance: InstanceContext.Shape, discovery: Discovery.Interface): Cache => {
-    const state: State = {
-      skills: {},
-      dirs: new Set<string>(),
-    }
-
-    const load = async () => {
-      if (!Flag.OPENCODE_DISABLE_EXTERNAL_SKILLS) {
-        for (const dir of EXTERNAL_DIRS) {
-          const root = path.join(Global.Path.home, dir)
-          if (!(await Filesystem.isDir(root))) continue
-          await scan(state, root, EXTERNAL_SKILL_PATTERN, { dot: true, scope: "global" })
-        }
-
-        for await (const root of Filesystem.up({
-          targets: EXTERNAL_DIRS,
-          start: instance.directory,
-          stop: instance.project.worktree,
-        })) {
-          await scan(state, root, EXTERNAL_SKILL_PATTERN, { dot: true, scope: "project" })
-        }
-      }
-
-      for (const dir of await Config.directories()) {
-        await scan(state, dir, OPENCODE_SKILL_PATTERN)
-      }
-
-      const cfg = await Config.get()
-      for (const item of cfg.skills?.paths ?? []) {
-        const expanded = item.startsWith("~/") ? path.join(os.homedir(), item.slice(2)) : item
-        const dir = path.isAbsolute(expanded) ? expanded : path.join(instance.directory, expanded)
-        if (!(await Filesystem.isDir(dir))) {
-          log.warn("skill path not found", { path: dir })
-          continue
-        }
-
-        await scan(state, dir, SKILL_PATTERN)
-      }
-
-      for (const url of cfg.skills?.urls ?? []) {
-        for (const dir of await Effect.runPromise(discovery.pull(url))) {
-          state.dirs.add(dir)
-          await scan(state, dir, SKILL_PATTERN)
-        }
-      }
-
-      log.info("init", { count: Object.keys(state.skills).length })
-    }
-
-    const ensure = () => {
-      if (state.task) return state.task
-      state.task = load().catch((err) => {
-        state.task = undefined
-        throw err
-      })
-      return state.task
-    }
-
-    return { ...state, ensure }
-  }
-
   export class Service extends ServiceMap.Service<Service, Interface>()("@opencode/Skill") {}
 
   export const layer: Layer.Layer<Service, never, InstanceContext | Discovery.Service> = Layer.effect(
@@ -185,25 +118,78 @@ export namespace Skill {
     Effect.gen(function* () {
       const instance = yield* InstanceContext
       const discovery = yield* Discovery.Service
-      const state = create(instance, discovery)
+      const state: State = {
+        skills: {},
+        dirs: new Set<string>(),
+      }
+
+      const load = Effect.fn("Skill.load")(function* () {
+        yield* Effect.promise(async () => {
+          if (!Flag.OPENCODE_DISABLE_EXTERNAL_SKILLS) {
+            for (const dir of EXTERNAL_DIRS) {
+              const root = path.join(Global.Path.home, dir)
+              if (!(await Filesystem.isDir(root))) continue
+              await scan(state, root, EXTERNAL_SKILL_PATTERN, { dot: true, scope: "global" })
+            }
+
+            for await (const root of Filesystem.up({
+              targets: EXTERNAL_DIRS,
+              start: instance.directory,
+              stop: instance.project.worktree,
+            })) {
+              await scan(state, root, EXTERNAL_SKILL_PATTERN, { dot: true, scope: "project" })
+            }
+          }
+
+          for (const dir of await Config.directories()) {
+            await scan(state, dir, OPENCODE_SKILL_PATTERN)
+          }
+
+          const cfg = await Config.get()
+          for (const item of cfg.skills?.paths ?? []) {
+            const expanded = item.startsWith("~/") ? path.join(os.homedir(), item.slice(2)) : item
+            const dir = path.isAbsolute(expanded) ? expanded : path.join(instance.directory, expanded)
+            if (!(await Filesystem.isDir(dir))) {
+              log.warn("skill path not found", { path: dir })
+              continue
+            }
+
+            await scan(state, dir, SKILL_PATTERN)
+          }
+
+          for (const url of cfg.skills?.urls ?? []) {
+            for (const dir of await Effect.runPromise(discovery.pull(url))) {
+              state.dirs.add(dir)
+              await scan(state, dir, SKILL_PATTERN)
+            }
+          }
+
+          log.info("init", { count: Object.keys(state.skills).length })
+        })
+      })
+
+      const loadFiber = yield* load().pipe(
+        Effect.catchCause(() => Effect.void),
+        Effect.forkScoped,
+      )
 
       const get = Effect.fn("Skill.get")(function* (name: string) {
-        yield* Effect.promise(() => state.ensure())
+        yield* Fiber.join(loadFiber)
         return state.skills[name]
       })
 
       const all = Effect.fn("Skill.all")(function* () {
-        yield* Effect.promise(() => state.ensure())
+        yield* Fiber.join(loadFiber)
         return Object.values(state.skills)
       })
 
       const dirs = Effect.fn("Skill.dirs")(function* () {
-        yield* Effect.promise(() => state.ensure())
+        yield* Fiber.join(loadFiber)
         return Array.from(state.dirs)
       })
 
       const available = Effect.fn("Skill.available")(function* (agent?: Agent.Info) {
-        yield* Effect.promise(() => state.ensure())
+        yield* Fiber.join(loadFiber)
         const list = Object.values(state.skills)
         if (!agent) return list
         return list.filter((skill) => PermissionNext.evaluate("skill", skill.name, agent.permission).action !== "deny")

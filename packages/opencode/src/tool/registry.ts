@@ -43,7 +43,7 @@ export namespace ToolRegistry {
     readonly tools: (
       model: { providerID: ProviderID; modelID: ModelID },
       agent?: Agent.Info,
-    ) => Effect.Effect<{ id: string; description: string; parameters: z.ZodType; execute: Awaited<ReturnType<Tool.Info["init"]>>["execute"] }[]>
+    ) => Effect.Effect<(Awaited<ReturnType<Tool.Info["init"]>> & { id: string })[]>
   }
 
   export class Service extends ServiceMap.Service<Service, Interface>()("@opencode/ToolRegistry") {}

@@ -73,7 +73,7 @@ export class Instances extends ServiceMap.Service<Instances, LayerMap.LayerMap<s
           MutableHashMap.remove(rcMap.state.map, directory)
           if (entry.value.fiber) yield* Fiber.interrupt(entry.value.fiber)
           yield* Scope.close(entry.value.scope, Exit.void)
-        }).pipe(Effect.uninterruptible)
+        }).pipe(Effect.uninterruptible, Effect.ignore)
 
       const unregister = registerDisposer((directory) => Effect.runPromise(forceInvalidate(directory)))
       yield* Effect.addFinalizer(() => Effect.sync(unregister))

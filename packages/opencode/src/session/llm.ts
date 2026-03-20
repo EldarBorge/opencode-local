@@ -227,6 +227,7 @@ export namespace LLM {
         model: language,
         middleware: [
           {
+            specificationVersion: "v3" as const,
             async transformParams(args) {
               if (args.type === "stream") {
                 // @ts-expect-error

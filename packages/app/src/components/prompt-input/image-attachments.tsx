@@ -1,6 +1,5 @@
 import { Component, Show } from "solid-js"
 import { Icon } from "@opencode-ai/ui/icon"
-import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import type { ImageAttachmentPart } from "@/context/prompt"
 
@@ -22,7 +21,9 @@ const fallbackClass =
   "size-12 rounded-[6px] bg-background-stronger flex items-center justify-center shadow-xs-border cursor-default"
 const imageClass = "size-12 rounded-[6px] object-cover shadow-xs-border"
 const removeClass =
-  "absolute top-1 right-1 size-3.5 text-text-weak hover:text-text-strong opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+  "absolute top-0 right-0 size-6 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+const removeIconClass =
+  "absolute top-1 right-1 size-3.5 rounded-[var(--radius-sm)] flex items-center justify-center bg-transparent group-hover/remove:bg-surface-base-hover group-active/remove:bg-surface-base-active"
 
 export const PromptImageAttachments: Component<PromptImageAttachmentsProps> = (props) => {
   return (
@@ -60,14 +61,16 @@ export const PromptImageAttachment: Component<PromptImageAttachmentProps> = (pro
             onClick={() => props.onOpen(props.attachment)}
           />
         </Show>
-        <IconButton
+        <button
           type="button"
-          icon="close-small"
-          variant="ghost"
-          class={removeClass}
+          class={`${removeClass} group/remove`}
           onClick={() => props.onRemove(props.attachment.id)}
           aria-label={props.removeLabel}
-        />
+        >
+          <span class={removeIconClass}>
+            <Icon name="close-small" size="small" class="text-text-weak group-hover/remove:text-text-strong" />
+          </span>
+        </button>
       </div>
     </Tooltip>
   )

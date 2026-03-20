@@ -1,6 +1,6 @@
 import { Component, For, Show, createMemo } from "solid-js"
 import { FileIcon } from "@opencode-ai/ui/file-icon"
-import { IconButton } from "@opencode-ai/ui/icon-button"
+import { Icon } from "@opencode-ai/ui/icon"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { getDirectory, getFilename, getFilenameTruncated } from "@opencode-ai/util/path"
 import type { ContextItem, ImageAttachmentPart } from "@/context/prompt"
@@ -95,17 +95,23 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                   <Show when={row.item.comment}>
                     {(comment) => <div class="text-12-regular text-text-strong ml-5 truncate">{comment()}</div>}
                   </Show>
-                  <IconButton
+                  <button
                     type="button"
-                    icon="close-small"
-                    variant="ghost"
-                    class="absolute top-1 right-1 size-3.5 text-text-weak hover:text-text-strong opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+                    class="absolute top-0 right-0 size-6 opacity-0 pointer-events-none transition-opacity group/remove group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
                     onClick={(e) => {
                       e.stopPropagation()
                       props.remove(row.item)
                     }}
                     aria-label={props.t("prompt.context.removeFile")}
-                  />
+                  >
+                    <span class="absolute top-1 right-1 size-3.5 rounded-[var(--radius-sm)] flex items-center justify-center bg-transparent group-hover/remove:bg-surface-base-hover group-active/remove:bg-surface-base-active">
+                      <Icon
+                        name="close-small"
+                        size="small"
+                        class="text-text-weak group-hover/remove:text-text-strong"
+                      />
+                    </span>
+                  </button>
                 </div>
               </Tooltip>
             )

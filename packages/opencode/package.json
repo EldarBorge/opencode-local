@@ -26,13 +26,6 @@
   "exports": {
     "./*": "./src/*.ts"
   },
-  "imports": {
-    "#db": {
-      "bun": "./src/storage/db.bun.ts",
-      "node": "./src/storage/db.node.ts",
-      "default": "./src/storage/db.bun.ts"
-    }
-  },
   "devDependencies": {
     "@babel/core": "7.28.4",
     "@effect/language-service": "0.79.0",

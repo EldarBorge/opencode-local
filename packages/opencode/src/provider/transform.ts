@@ -25,8 +25,9 @@ export namespace ProviderTransform {
     switch (npm) {
       case "@ai-sdk/github-copilot":
         return "copilot"
-      case "@ai-sdk/openai":
       case "@ai-sdk/azure":
+        return "azure"
+      case "@ai-sdk/openai":
         return "openai"
       case "@ai-sdk/amazon-bedrock":
         return "bedrock"

@@ -1,25 +1,15 @@
 import type { Hooks, PluginInput, Plugin as PluginInstance } from "@opencode-ai/plugin"
-import { Config } from "../config/config"
 import { Bus } from "../bus"
 import { Log } from "../util/log"
 import { createOpencodeClient } from "@opencode-ai/sdk"
-import { Server } from "../server/server"
 import { BunProc } from "../bun"
 import { Flag } from "../flag/flag"
-import { CodexAuthPlugin } from "./codex"
-import { Session } from "../session"
 import { NamedError } from "@opencode-ai/util/error"
-import { CopilotAuthPlugin } from "./copilot"
-import { gitlabAuthPlugin as GitlabAuthPlugin } from "@gitlab/opencode-gitlab-auth"
-import { Effect, Fiber, Layer, ServiceMap } from "effect"
+import { Effect, Layer, ServiceMap } from "effect"
 import { InstanceContext } from "@/effect/instance-context"
-import { runPromiseInstance } from "@/effect/runtime"
 
 export namespace Plugin {
   const log = Log.create({ service: "plugin" })
-
-  // Built-in plugins that are directly imported (not installed from npm)
-  const INTERNAL_PLUGINS: PluginInstance[] = [CodexAuthPlugin, CopilotAuthPlugin, GitlabAuthPlugin]
 
   export interface Interface {
     readonly trigger: <
@@ -42,9 +32,18 @@ export namespace Plugin {
     Effect.gen(function* () {
       const instance = yield* InstanceContext
       const hooks: Hooks[] = []
+      let task: Promise<void> | undefined
 
       const load = Effect.fn("Plugin.load")(function* () {
         yield* Effect.promise(async () => {
+          const [{ Config }, { Server }, codex, copilot, gitlab] = await Promise.all([
+            import("../config/config"),
+            import("../server/server"),
+            import("./codex"),
+            import("./copilot"),
+            import("opencode-gitlab-auth"),
+          ])
+          const internal: PluginInstance[] = [codex.CodexAuthPlugin, copilot.CopilotAuthPlugin, gitlab.gitlabAuthPlugin]
           const client = createOpencodeClient({
             baseUrl: "http://localhost:4096",
             directory: instance.directory,
@@ -67,7 +66,7 @@ export namespace Plugin {
             $: Bun.$,
           }
 
-          for (const plugin of INTERNAL_PLUGINS) {
+          for (const plugin of internal) {
             log.info("loading internal plugin", { name: plugin.name })
             const init = await plugin(input).catch((err) => {
               log.error("failed to load internal plugin", { name: plugin.name, error: err })
@@ -90,11 +89,13 @@ export namespace Plugin {
                 const cause = err instanceof Error ? err.cause : err
                 const detail = cause instanceof Error ? cause.message : String(cause ?? err)
                 log.error("failed to install plugin", { pkg, version, error: detail })
-                Bus.publish(Session.Event.Error, {
-                  error: new NamedError.Unknown({
-                    message: `Failed to install plugin ${pkg}@${version}: ${detail}`,
-                  }).toObject(),
-                })
+                void import("../session").then(({ Session }) =>
+                  Bus.publish(Session.Event.Error, {
+                    error: new NamedError.Unknown({
+                      message: `Failed to install plugin ${pkg}@${version}: ${detail}`,
+                    }).toObject(),
+                  }),
+                )
                 return ""
               })
               if (!plugin) continue
@@ -114,20 +115,26 @@ export namespace Plugin {
               .catch((err) => {
                 const message = err instanceof Error ? err.message : String(err)
                 log.error("failed to load plugin", { path: plugin, error: message })
-                Bus.publish(Session.Event.Error, {
-                  error: new NamedError.Unknown({
-                    message: `Failed to load plugin ${plugin}: ${message}`,
-                  }).toObject(),
-                })
+                void import("../session").then(({ Session }) =>
+                  Bus.publish(Session.Event.Error, {
+                    error: new NamedError.Unknown({
+                      message: `Failed to load plugin ${plugin}: ${message}`,
+                    }).toObject(),
+                  }),
+                )
               })
           }
         })
       })
 
-      const loadFiber = yield* load().pipe(
-        Effect.catchCause((cause) => Effect.sync(() => log.error("init failed", { cause }))),
-        Effect.forkScoped,
-      )
+      const ensure = Effect.fn("Plugin.ensure")(function* () {
+        yield* Effect.promise(() => {
+          task ??= Effect.runPromise(
+            load().pipe(Effect.catchCause((cause) => Effect.sync(() => log.error("init failed", { cause })))),
+          )
+          return task
+        })
+      })
 
       const trigger = Effect.fn("Plugin.trigger")(function* <
         Name extends Exclude<keyof Required<Hooks>, "auth" | "event" | "tool">,
@@ -135,7 +142,7 @@ export namespace Plugin {
         Output = Parameters<Required<Hooks>[Name]>[1],
       >(name: Name, input: Input, output: Output) {
         if (!name) return output
-        yield* Fiber.join(loadFiber)
+        yield* ensure()
         yield* Effect.promise(async () => {
           for (const hook of hooks) {
             const fn = hook[name]
@@ -150,13 +157,14 @@ export namespace Plugin {
       })
 
       const list = Effect.fn("Plugin.list")(function* () {
-        yield* Fiber.join(loadFiber)
+        yield* ensure()
         return hooks
       })
 
       const init = Effect.fn("Plugin.init")(function* () {
-        yield* Fiber.join(loadFiber)
+        yield* ensure()
         yield* Effect.promise(async () => {
+          const { Config } = await import("../config/config")
           const config = await Config.get()
           for (const hook of hooks) {
             await (hook as any).config?.(config)
@@ -173,21 +181,26 @@ export namespace Plugin {
 
       return Service.of({ trigger, list, init })
     }),
-  )
+  ).pipe(Layer.fresh)
+
+  async function run<A, E>(effect: Effect.Effect<A, E, Service>) {
+    const { runPromiseInstance } = await import("@/effect/runtime")
+    return runPromiseInstance(effect)
+  }
 
   export async function trigger<
     Name extends Exclude<keyof Required<Hooks>, "auth" | "event" | "tool">,
     Input = Parameters<Required<Hooks>[Name]>[0],
     Output = Parameters<Required<Hooks>[Name]>[1],
   >(name: Name, input: Input, output: Output): Promise<Output> {
-    return runPromiseInstance(Service.use((svc) => svc.trigger(name, input, output)))
+    return run(Service.use((svc) => svc.trigger(name, input, output)))
   }
 
   export async function list(): Promise<Hooks[]> {
-    return runPromiseInstance(Service.use((svc) => svc.list()))
+    return run(Service.use((svc) => svc.list()))
   }
 
   export async function init() {
-    return runPromiseInstance(Service.use((svc) => svc.init()))
+    return run(Service.use((svc) => svc.init()))
   }
 }

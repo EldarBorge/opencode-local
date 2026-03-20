@@ -1,15 +1,15 @@
 import { Effect, Layer, LayerMap, ServiceMap } from "effect"
-import { File } from "@/file"
-import { FileTime } from "@/file/time"
+import { File } from "@/file/service"
+import { FileTime } from "@/file/time-service"
 import { FileWatcher } from "@/file/watcher"
-import { Format } from "@/format"
-import { PermissionNext } from "@/permission"
+import { Format } from "@/format/service"
+import { Permission } from "@/permission/service"
 import { Instance } from "@/project/instance"
 import { Vcs } from "@/project/vcs"
-import { ProviderAuth } from "@/provider/auth"
-import { Question } from "@/question"
-import { Skill } from "@/skill/skill"
-import { Snapshot } from "@/snapshot"
+import { ProviderAuth } from "@/provider/auth-service"
+import { Question } from "@/question/service"
+import { Skill } from "@/skill/service"
+import { Snapshot } from "@/snapshot/service"
 import { Plugin } from "@/plugin"
 import { InstanceContext } from "./instance-context"
 import { registerDisposer } from "./instance-registry"
@@ -18,7 +18,7 @@ export { InstanceContext } from "./instance-context"
 
 export type InstanceServices =
   | Question.Service
-  | PermissionNext.Service
+  | Permission.Service
   | ProviderAuth.Service
   | FileWatcher.Service
   | Vcs.Service
@@ -35,20 +35,20 @@ export type InstanceServices =
 // runPromiseInstance -> Instances.get, which always runs inside Instance.provide.
 // This should go away once the old Instance type is removed and lookup can load
 // the full context directly.
-function lookup(_key: string): Layer.Layer<InstanceServices> {
+function lookup(_key: string) {
   const ctx = Layer.sync(InstanceContext, () => InstanceContext.of(Instance.current))
   return Layer.mergeAll(
-    Layer.fresh(Question.layer),
-    Layer.fresh(PermissionNext.layer),
-    Layer.fresh(ProviderAuth.defaultLayer),
-    Layer.fresh(FileWatcher.layer).pipe(Layer.orDie),
-    Layer.fresh(Vcs.layer),
-    Layer.fresh(FileTime.layer).pipe(Layer.orDie),
-    Layer.fresh(Format.layer),
-    Layer.fresh(File.layer),
-    Layer.fresh(Skill.defaultLayer),
-    Layer.fresh(Snapshot.defaultLayer),
-    Layer.fresh(Plugin.layer),
+    Question.layer,
+    Permission.layer,
+    ProviderAuth.defaultLayer,
+    FileWatcher.layer,
+    Vcs.layer,
+    FileTime.layer,
+    Format.layer,
+    File.layer,
+    Skill.defaultLayer,
+    Snapshot.defaultLayer,
+    Plugin.layer,
   ).pipe(Layer.provide(ctx))
 }
 

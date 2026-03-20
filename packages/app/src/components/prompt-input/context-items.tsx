@@ -58,7 +58,6 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
             const directory = getDirectory(row.item.path)
             const filename = getFilename(row.item.path)
             const label = getFilenameTruncated(row.item.path, 14)
-            const selected = props.active(row.item)
 
             return (
               <Tooltip
@@ -75,12 +74,7 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                 class="shrink-0"
               >
                 <div
-                  classList={{
-                    "group relative flex flex-col rounded-[6px] pl-2 pr-7 py-1 max-w-[200px] h-12 cursor-default transition-all transition-transform shadow-xs-border hover:shadow-xs-border-hover": true,
-                    "hover:bg-surface-interactive-weak": !!row.item.commentID && !selected,
-                    "bg-surface-interactive-hover hover:bg-surface-interactive-hover shadow-xs-border-hover": selected,
-                    "bg-background-stronger": !selected,
-                  }}
+                  class="group relative flex flex-col rounded-[6px] pl-2 pr-7 py-1 max-w-[200px] h-12 cursor-default shadow-xs-border bg-background-stronger"
                   onClick={() => props.openComment(row.item)}
                 >
                   <div class="flex items-center gap-1.5">

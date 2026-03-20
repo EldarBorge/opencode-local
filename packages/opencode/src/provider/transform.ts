@@ -74,17 +74,29 @@ export namespace ProviderTransform {
     }
 
     if (model.api.id.includes("claude")) {
+      const scrub = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "_")
       return msgs.map((msg) => {
-        if ((msg.role === "assistant" || msg.role === "tool") && Array.isArray(msg.content)) {
-          msg.content = msg.content.map((part) => {
-            if ((part.type === "tool-call" || part.type === "tool-result") && "toolCallId" in part) {
-              return {
-                ...part,
-                toolCallId: part.toolCallId.replace(/[^a-zA-Z0-9_-]/g, "_"),
+        if (msg.role === "assistant" && Array.isArray(msg.content)) {
+          return {
+            ...msg,
+            content: msg.content.map((part) => {
+              if (part.type === "tool-call" || part.type === "tool-result") {
+                return { ...part, toolCallId: scrub(part.toolCallId) }
               }
-            }
-            return part
-          })
+              return part
+            }),
+          }
+        }
+        if (msg.role === "tool" && Array.isArray(msg.content)) {
+          return {
+            ...msg,
+            content: msg.content.map((part) => {
+              if (part.type === "tool-result") {
+                return { ...part, toolCallId: scrub(part.toolCallId) }
+              }
+              return part
+            }),
+          }
         }
         return msg
       })
@@ -116,8 +128,6 @@ export namespace ProviderTransform {
             return part
           })
         }
-
-        result.push(msg)
 
         // Fix message sequence: tool messages cannot be followed by user messages
         if (msg.role === "tool" && nextMsg?.role === "user") {
@@ -201,7 +211,12 @@ export namespace ProviderTransform {
 
       if (shouldUseContentOptions) {
         const lastContent = msg.content[msg.content.length - 1]
-        if (lastContent && typeof lastContent === "object") {
+        if (
+          lastContent &&
+          typeof lastContent === "object" &&
+          lastContent.type !== "tool-approval-request" &&
+          lastContent.type !== "tool-approval-response"
+        ) {
           lastContent.providerOptions = mergeDeep(lastContent.providerOptions ?? {}, providerOptions)
           continue
         }
@@ -283,7 +298,12 @@ export namespace ProviderTransform {
         return {
           ...msg,
           providerOptions: remap(msg.providerOptions),
-          content: msg.content.map((part) => ({ ...part, providerOptions: remap(part.providerOptions) })),
+          content: msg.content.map((part) => {
+            if (part.type === "tool-approval-request" || part.type === "tool-approval-response") {
+              return { ...part }
+            }
+            return { ...part, providerOptions: remap(part.providerOptions) }
+          }),
         } as typeof msg
       })
     }

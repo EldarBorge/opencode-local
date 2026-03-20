@@ -584,8 +584,8 @@ export namespace MessageV2 {
       return false
     })()
 
-    // TODO: THIS IS NOT COMPLIANT WITH AI SDK V66!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    const toModelOutput = (output: unknown) => {
+    const toModelOutput = (options: { toolCallId: string; input: unknown; output: unknown }) => {
+      const output = options.output
       if (typeof output === "string") {
         return { type: "text", value: output }
       }
@@ -786,7 +786,6 @@ export namespace MessageV2 {
     return await convertToModelMessages(
       result.filter((msg) => msg.parts.some((part) => part.type !== "step-start")),
       {
-        // TODO: WE MUST REVIEW THIS TYPE AGAIN!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         //@ts-expect-error (convertToModelMessages expects a ToolSet but only actually needs tools[name]?.toModelOutput)
         tools,
       },

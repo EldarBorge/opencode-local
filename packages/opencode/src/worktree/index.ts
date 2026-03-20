@@ -4,7 +4,6 @@ import z from "zod"
 import { NamedError } from "@opencode-ai/util/error"
 import { Global } from "../global"
 import { Instance } from "../project/instance"
-import { InstanceBootstrap } from "../project/bootstrap"
 import { Project } from "../project/project"
 import { Database, eq } from "../storage/db"
 import { ProjectTable } from "../project/project.sql"
@@ -15,7 +14,6 @@ import { git } from "../util/git"
 import { BusEvent } from "@/bus/bus-event"
 import { GlobalBus } from "@/bus/global"
 import { InstanceContext } from "@/effect/instance-context"
-import { runPromiseInstance } from "@/effect/runtime"
 import { Effect, Layer, ServiceMap } from "effect"
 
 export namespace Worktree {
@@ -370,10 +368,7 @@ export namespace Worktree {
         })
       })
 
-      const createFromInfoEffect = Effect.fn("Worktree.createFromInfo")(function* (
-        info: Info,
-        startCommand?: string,
-      ) {
+      const createFromInfoEffect = Effect.fn("Worktree.createFromInfo")(function* (info: Info, startCommand?: string) {
         return yield* Effect.promise(async (): Promise<() => Promise<void>> => {
           const created = await git(["worktree", "add", "--no-checkout", "-b", info.branch, info.directory], {
             cwd: instance.worktree,
@@ -407,7 +402,10 @@ export namespace Worktree {
 
               const booted = await Instance.provide({
                 directory: info.directory,
-                init: InstanceBootstrap,
+                init: async () => {
+                  const { InstanceBootstrap } = await import("../project/bootstrap")
+                  return InstanceBootstrap()
+                },
                 fn: () => undefined,
               })
                 .then(() => true)
@@ -720,35 +718,40 @@ export namespace Worktree {
     }),
   )
 
+  async function run<A, E>(effect: Effect.Effect<A, E, Service>) {
+    const { runPromiseInstance } = await import("@/effect/runtime")
+    return runPromiseInstance(effect)
+  }
+
   // ---------------------------------------------------------------------------
   // Promise facades
   // ---------------------------------------------------------------------------
 
   export async function makeWorktreeInfo(name?: string): Promise<Info> {
-    return runPromiseInstance(Service.use((svc) => svc.makeWorktreeInfo(name)))
+    return run(Service.use((svc) => svc.makeWorktreeInfo(name)))
   }
 
   export async function createFromInfo(info: Info, startCommand?: string) {
-    return runPromiseInstance(Service.use((svc) => svc.createFromInfo(info, startCommand)))
+    return run(Service.use((svc) => svc.createFromInfo(info, startCommand)))
   }
 
   export const create = Object.assign(
     async (input?: CreateInput) => {
-      return runPromiseInstance(Service.use((svc) => svc.create(input)))
+      return run(Service.use((svc) => svc.create(input)))
     },
     { schema: CreateInput.optional() },
   )
 
   export const remove = Object.assign(
     async (input: RemoveInput) => {
-      return runPromiseInstance(Service.use((svc) => svc.remove(input)))
+      return run(Service.use((svc) => svc.remove(input)))
     },
     { schema: RemoveInput },
   )
 
   export const reset = Object.assign(
     async (input: ResetInput) => {
-      return runPromiseInstance(Service.use((svc) => svc.reset(input)))
+      return run(Service.use((svc) => svc.reset(input)))
     },
     { schema: ResetInput },
   )

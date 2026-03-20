@@ -1,18 +1,9 @@
 import { runInstance } from "@/effect/run"
-import { Snapshot as S } from "./service"
+import type { Snapshot as S } from "./service"
 
 const svc = () => import("./service").then((m) => m.Snapshot.Service)
 
 export namespace Snapshot {
-  export const Patch = S.Patch
-  export type Patch = S.Patch
-  export const FileDiff = S.FileDiff
-  export type FileDiff = S.FileDiff
-  export type Interface = S.Interface
-  export const Service = S.Service
-  export const layer = S.layer
-  export const defaultLayer = S.defaultLayer
-
   export async function cleanup() {
     return runInstance((await svc()).use((s) => s.cleanup()))
   }
@@ -29,7 +20,7 @@ export namespace Snapshot {
     return runInstance((await svc()).use((s) => s.restore(snapshot)))
   }
 
-  export async function revert(patches: Patch[]) {
+  export async function revert(patches: S.Patch[]) {
     return runInstance((await svc()).use((s) => s.revert(patches)))
   }
 

@@ -1959,28 +1959,28 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         (await Provider.getSmallModel(input.providerID)) ?? (await Provider.getModel(input.providerID, input.modelID))
       )
     })
-    const result = await LLM.stream({
-      agent,
-      user: firstRealUser.info as MessageV2.User,
-      system: [],
-      small: true,
-      tools: {},
-      model,
-      abort: new AbortController().signal,
-      sessionID: input.session.id,
-      retries: 2,
-      messages: [
-        {
-          role: "user",
-          content: "Generate a title for this conversation:\n",
-        },
-        ...(hasOnlySubtaskParts
-          ? [{ role: "user" as const, content: subtaskParts.map((p) => p.prompt).join("\n") }]
-          : await MessageV2.toModelMessages(contextMessages, model)),
-      ],
-    })
-    const text = await result.text.catch((err) => log.error("failed to generate title", { error: err }))
-    if (text) {
+    try {
+      const result = await LLM.stream({
+        agent,
+        user: firstRealUser.info as MessageV2.User,
+        system: [],
+        small: true,
+        tools: {},
+        model,
+        abort: new AbortController().signal,
+        sessionID: input.session.id,
+        retries: 2,
+        messages: [
+          {
+            role: "user",
+            content: "Generate a title for this conversation:\n",
+          },
+          ...(hasOnlySubtaskParts
+            ? [{ role: "user" as const, content: subtaskParts.map((p) => p.prompt).join("\n") }]
+            : await MessageV2.toModelMessages(contextMessages, model)),
+        ],
+      })
+      const text = await result.text
       const cleaned = text
         .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
         .split("\n")
@@ -1990,6 +1990,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 
       const title = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
       return Session.setTitle({ sessionID: input.session.id, title })
+    } catch (error) {
+      log.error("failed to generate title", { error })
     }
   }
 }

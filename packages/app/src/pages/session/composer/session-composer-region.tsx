@@ -46,6 +46,14 @@ export function SessionComposerRegion(props: {
   const language = useLanguage()
   const route = useSessionKey()
 
+  const tag = (mime: string) => {
+    if (mime === "application/pdf") return "pdf"
+    if (mime.startsWith("image/")) return "image"
+    return "file"
+  }
+
+  const chip = (part: { filename: string; mime: string }) => `[${tag(part.mime)}:${part.filename}]`
+
   const handoffPrompt = createMemo(() => getSessionHandoff(route.sessionKey())?.prompt)
 
   const previewPrompt = () =>
@@ -54,7 +62,7 @@ export function SessionComposerRegion(props: {
       .map((part) => {
         if (part.type === "file") return `[file:${part.path}]`
         if (part.type === "agent") return `@${part.name}`
-        if (part.type === "image") return `[image:${part.filename}]`
+        if (part.type === "image") return chip(part)
         return part.content
       })
       .join("")

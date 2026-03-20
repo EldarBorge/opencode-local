@@ -510,19 +510,19 @@ export namespace MessageV2 {
   }
 
   const info = (row: typeof MessageTable.$inferSelect) =>
-    (({
-      ...row.data,
-      id: row.id,
-      sessionID: row.session_id
-    }) as MessageV2.Info)
-
-  const part = (row: typeof PartTable.$inferSelect) =>
-    (({
+    ({
       ...row.data,
       id: row.id,
       sessionID: row.session_id,
-      messageID: row.message_id
-    }) as MessageV2.Part)
+    }) as MessageV2.Info
+
+  const part = (row: typeof PartTable.$inferSelect) =>
+    ({
+      ...row.data,
+      id: row.id,
+      sessionID: row.session_id,
+      messageID: row.message_id,
+    }) as MessageV2.Part
 
   const older = (row: Cursor) =>
     or(
@@ -556,11 +556,11 @@ export namespace MessageV2 {
     }))
   }
 
-  export function toModelMessages(
+  export async function toModelMessages(
     input: WithParts[],
     model: Provider.Model,
     options?: { stripMedia?: boolean },
-  ): ModelMessage[] {
+  ): Promise<ModelMessage[]> {
     const result: UIMessage[] = []
     const toolNames = new Set<string>()
     // Track media from tool results that need to be injected as user messages
@@ -788,7 +788,7 @@ export namespace MessageV2 {
         //@ts-expect-error (convertToModelMessages expects a ToolSet but only actually needs tools[name]?.toModelOutput)
         tools,
       },
-    );
+    )
   }
 
   export const page = fn(
@@ -854,13 +854,14 @@ export namespace MessageV2 {
       db.select().from(PartTable).where(eq(PartTable.message_id, message_id)).orderBy(PartTable.id).all(),
     )
     return rows.map(
-      (row) => (({
-        ...row.data,
-        id: row.id,
-        sessionID: row.session_id,
-        messageID: row.message_id
-      }) as MessageV2.Part),
-    );
+      (row) =>
+        ({
+          ...row.data,
+          id: row.id,
+          sessionID: row.session_id,
+          messageID: row.message_id,
+        }) as MessageV2.Part,
+    )
   })
 
   export const get = fn(

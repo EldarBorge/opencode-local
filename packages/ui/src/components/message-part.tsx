@@ -900,6 +900,12 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
 
   const text = createMemo(() => textPart()?.text || "")
 
+  const shown = createMemo(() => {
+    const value = text()
+    if (!value.trim()) return ""
+    return value
+  })
+
   const files = createMemo(() => (props.parts?.filter((p) => p.type === "file") as FilePart[]) ?? [])
 
   const attachments = createMemo(() => files().filter(attached))
@@ -995,11 +1001,11 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
           </For>
         </div>
       </Show>
-      <Show when={text()}>
+      <Show when={shown()}>
         <>
           <div data-slot="user-message-body">
             <div data-slot="user-message-text">
-              <HighlightedText text={text()} references={inlineFiles()} agents={agents()} />
+              <HighlightedText text={shown()} references={inlineFiles()} agents={agents()} />
             </div>
           </div>
           <div data-slot="user-message-copy-wrapper">

@@ -671,7 +671,7 @@ export namespace SessionPrompt {
         sessionID,
         system,
         messages: [
-          ...MessageV2.toModelMessages(msgs, model),
+          ...(await MessageV2.toModelMessages(msgs, model)),
           ...(isLastStep
             ? [
                 {
@@ -840,7 +840,8 @@ export namespace SessionPrompt {
       const execute = item.execute
       if (!execute) continue
 
-      const transformed = ProviderTransform.schema(input.model, asSchema(item.inputSchema).jsonSchema)
+      const schema = await asSchema(item.inputSchema).jsonSchema
+      const transformed = ProviderTransform.schema(input.model, schema)
       item.inputSchema = jsonSchema(transformed)
       // Wrap execute to add plugin hooks and format output
       item.execute = async (args, opts) => {
@@ -953,17 +954,13 @@ export namespace SessionPrompt {
           metadata: { valid: true },
         }
       },
-      toModelOutput(
-        {
-          output
-        }
-      ) {
+      toModelOutput({ output }) {
         return {
           type: "text",
           value: output.output,
-        };
+        }
       },
-    });
+    })
   }
 
   async function createUserMessage(input: PromptInput) {
@@ -1979,7 +1976,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         },
         ...(hasOnlySubtaskParts
           ? [{ role: "user" as const, content: subtaskParts.map((p) => p.prompt).join("\n") }]
-          : MessageV2.toModelMessages(contextMessages, model)),
+          : await MessageV2.toModelMessages(contextMessages, model)),
       ],
     })
     const text = await result.text.catch((err) => log.error("failed to generate title", { error: err }))

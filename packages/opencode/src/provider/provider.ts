@@ -866,8 +866,16 @@ export namespace Provider {
         providers[providerID] = mergeDeep(existing, provider)
         return
       }
-      const match = database[providerID]
-      if (!match) return
+      const match =
+        database[providerID] ??
+        ({
+          id: providerID,
+          name: providerID,
+          source: "custom",
+          env: [],
+          options: {},
+          models: {},
+        } satisfies Info)
       // @ts-expect-error
       providers[providerID] = mergeDeep(match, provider)
     }

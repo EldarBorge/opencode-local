@@ -1,38 +1,16 @@
-import { PlanExitTool } from "./plan"
-import { QuestionTool } from "./question"
-import { BashTool } from "./bash"
-import { EditTool } from "./edit"
-import { GlobTool } from "./glob"
-import { GrepTool } from "./grep"
-import { BatchTool } from "./batch"
-import { ReadTool } from "./read"
-import { TaskTool } from "./task"
-import { TodoWriteTool, TodoReadTool } from "./todo"
-import { WebFetchTool } from "./webfetch"
-import { WriteTool } from "./write"
-import { InvalidTool } from "./invalid"
-import { SkillTool } from "./skill"
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
-import { Config } from "../config/config"
 import path from "path"
 import { type ToolContext as PluginToolContext, type ToolDefinition } from "@opencode-ai/plugin"
 import z from "zod"
-import { Plugin } from "../plugin"
 import { ProviderID, type ModelID } from "../provider/schema"
-import { WebSearchTool } from "./websearch"
-import { CodeSearchTool } from "./codesearch"
 import { Flag } from "@/flag/flag"
 import { Log } from "@/util/log"
-import { LspTool } from "./lsp"
 import { Truncate } from "./truncate"
-
-import { ApplyPatchTool } from "./apply_patch"
 import { Glob } from "../util/glob"
 import { pathToFileURL } from "url"
-import { Effect, Fiber, Layer, ServiceMap } from "effect"
+import { Effect, Layer, ServiceMap } from "effect"
 import { InstanceContext } from "@/effect/instance-context"
-import { runPromiseInstance } from "@/effect/runtime"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -54,9 +32,11 @@ export namespace ToolRegistry {
       const instance = yield* InstanceContext
 
       const custom: Tool.Info[] = []
+      let task: Promise<void> | undefined
 
       const load = Effect.fn("ToolRegistry.load")(function* () {
         yield* Effect.promise(async () => {
+          const [{ Config }, { Plugin }] = await Promise.all([import("../config/config"), import("../plugin")])
           const matches = await Config.directories().then((dirs) =>
             dirs.flatMap((dir) =>
               Glob.scanSync("{tool,tools}/*.{js,ts}", { cwd: dir, absolute: true, dot: true, symlink: true }),
@@ -65,7 +45,7 @@ export namespace ToolRegistry {
           if (matches.length) await Config.waitForDependencies()
           for (const match of matches) {
             const namespace = path.basename(match, path.extname(match))
-            const mod = await import(pathToFileURL(match).href)
+            const mod = await import(process.platform === "win32" ? match : pathToFileURL(match).href)
             for (const [id, def] of Object.entries<ToolDefinition>(mod)) {
               custom.push(fromPlugin(id === "default" ? namespace : `${namespace}_${id}`, def))
             }
@@ -80,10 +60,14 @@ export namespace ToolRegistry {
         })
       })
 
-      const loadFiber = yield* load().pipe(
-        Effect.catchCause((cause) => Effect.sync(() => log.error("init failed", { cause }))),
-        Effect.forkScoped,
-      )
+      const ensure = Effect.fn("ToolRegistry.ensure")(function* () {
+        yield* Effect.promise(() => {
+          task ??= Effect.runPromise(
+            load().pipe(Effect.catchCause((cause) => Effect.sync(() => log.error("init failed", { cause })))),
+          )
+          return task
+        })
+      })
 
       function fromPlugin(id: string, def: ToolDefinition): Tool.Info {
         return {
@@ -110,35 +94,75 @@ export namespace ToolRegistry {
       }
 
       async function all(): Promise<Tool.Info[]> {
+        const { Config } = await import("../config/config")
         const config = await Config.get()
         const question = ["app", "cli", "desktop"].includes(Flag.OPENCODE_CLIENT) || Flag.OPENCODE_ENABLE_QUESTION_TOOL
+        const [
+          invalid,
+          questionMod,
+          bash,
+          read,
+          glob,
+          grep,
+          edit,
+          write,
+          task,
+          webfetch,
+          todo,
+          websearch,
+          codesearch,
+          skill,
+          applyPatch,
+          lsp,
+          batch,
+          plan,
+        ] = await Promise.all([
+          import("./invalid"),
+          import("./question"),
+          import("./bash"),
+          import("./read"),
+          import("./glob"),
+          import("./grep"),
+          import("./edit"),
+          import("./write"),
+          import("./task"),
+          import("./webfetch"),
+          import("./todo"),
+          import("./websearch"),
+          import("./codesearch"),
+          import("./skill"),
+          import("./apply_patch"),
+          import("./lsp"),
+          import("./batch"),
+          import("./plan"),
+        ])
 
         return [
-          InvalidTool,
-          ...(question ? [QuestionTool] : []),
-          BashTool,
-          ReadTool,
-          GlobTool,
-          GrepTool,
-          EditTool,
-          WriteTool,
-          TaskTool,
-          WebFetchTool,
-          TodoWriteTool,
+          invalid.InvalidTool,
+          ...(question ? [questionMod.QuestionTool] : []),
+          bash.BashTool,
+          read.ReadTool,
+          glob.GlobTool,
+          grep.GrepTool,
+          edit.EditTool,
+          write.WriteTool,
+          task.TaskTool,
+          webfetch.WebFetchTool,
+          todo.TodoWriteTool,
           // TodoReadTool,
-          WebSearchTool,
-          CodeSearchTool,
-          SkillTool,
-          ApplyPatchTool,
-          ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
-          ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
-          ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [PlanExitTool] : []),
+          websearch.WebSearchTool,
+          codesearch.CodeSearchTool,
+          skill.SkillTool,
+          applyPatch.ApplyPatchTool,
+          ...(Flag.OPENCODE_EXPERIMENTAL_LSP_TOOL ? [lsp.LspTool] : []),
+          ...(config.experimental?.batch_tool === true ? [batch.BatchTool] : []),
+          ...(Flag.OPENCODE_EXPERIMENTAL_PLAN_MODE && Flag.OPENCODE_CLIENT === "cli" ? [plan.PlanExitTool] : []),
           ...custom,
         ]
       }
 
       const register = Effect.fn("ToolRegistry.register")(function* (tool: Tool.Info) {
-        yield* Fiber.join(loadFiber)
+        yield* ensure()
         const idx = custom.findIndex((t) => t.id === tool.id)
         if (idx >= 0) {
           custom.splice(idx, 1, tool)
@@ -148,7 +172,7 @@ export namespace ToolRegistry {
       })
 
       const ids = Effect.fn("ToolRegistry.ids")(function* () {
-        yield* Fiber.join(loadFiber)
+        yield* ensure()
         const tools = yield* Effect.promise(() => all())
         return tools.map((t) => t.id)
       })
@@ -157,7 +181,7 @@ export namespace ToolRegistry {
         model: { providerID: ProviderID; modelID: ModelID },
         agent?: Agent.Info,
       ) {
-        yield* Fiber.join(loadFiber)
+        yield* ensure()
         const allTools = yield* Effect.promise(() => all())
         return yield* Effect.promise(() =>
           Promise.all(
@@ -183,6 +207,7 @@ export namespace ToolRegistry {
                   description: tool.description,
                   parameters: tool.parameters,
                 }
+                const { Plugin } = await import("../plugin")
                 await Plugin.trigger("tool.definition", { toolID: t.id }, output)
                 return {
                   id: t.id,
@@ -197,14 +222,19 @@ export namespace ToolRegistry {
 
       return Service.of({ register, ids, tools })
     }),
-  )
+  ).pipe(Layer.fresh)
+
+  async function run<A, E>(effect: Effect.Effect<A, E, Service>) {
+    const { runPromiseInstance } = await import("@/effect/runtime")
+    return runPromiseInstance(effect)
+  }
 
   export async function register(tool: Tool.Info) {
-    return runPromiseInstance(Service.use((svc) => svc.register(tool)))
+    return run(Service.use((svc) => svc.register(tool)))
   }
 
   export async function ids() {
-    return runPromiseInstance(Service.use((svc) => svc.ids()))
+    return run(Service.use((svc) => svc.ids()))
   }
 
   export async function tools(
@@ -214,6 +244,6 @@ export namespace ToolRegistry {
     },
     agent?: Agent.Info,
   ) {
-    return runPromiseInstance(Service.use((svc) => svc.tools(model, agent)))
+    return run(Service.use((svc) => svc.tools(model, agent)))
   }
 }

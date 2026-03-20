@@ -1,13 +1,10 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { InstanceContext } from "@/effect/instance-context"
-import { runPromiseInstance, runSyncInstance } from "@/effect/runtime"
 import { type IPty } from "bun-pty"
 import z from "zod"
 import { Log } from "../util/log"
 import { lazy } from "@opencode-ai/util/lazy"
-import { Shell } from "@/shell/shell"
-import { Plugin } from "@/plugin"
 import { PtyID } from "./schema"
 import { Effect, Layer, ServiceMap } from "effect"
 
@@ -158,6 +155,7 @@ export namespace Pty {
 
       const create = Effect.fn("Pty.create")(function* (input: CreateInput) {
         return yield* Effect.promise(async () => {
+          const [{ Shell }, { Plugin }] = await Promise.all([import("@/shell/shell"), import("@/plugin")])
           const id = PtyID.ascending()
           const command = input.command || Shell.preferred()
           const args = input.args || []
@@ -339,37 +337,49 @@ export namespace Pty {
     }),
   )
 
+  function runtime() {
+    return require("@/effect/runtime") as typeof import("@/effect/runtime")
+  }
+
+  function run<A, E>(effect: Effect.Effect<A, E, Service>) {
+    return runtime().runPromiseInstance(effect)
+  }
+
+  function runSync<A, E>(effect: Effect.Effect<A, E, Service>) {
+    return runtime().runSyncInstance(effect)
+  }
+
   // Sync facades
   export function list() {
-    return runSyncInstance(Service.use((svc) => svc.list()))
+    return runSync(Service.use((svc) => svc.list()))
   }
 
   export function get(id: PtyID) {
-    return runSyncInstance(Service.use((svc) => svc.get(id)))
+    return runSync(Service.use((svc) => svc.get(id)))
   }
 
   export function resize(id: PtyID, cols: number, rows: number) {
-    runSyncInstance(Service.use((svc) => svc.resize(id, cols, rows)))
+    runSync(Service.use((svc) => svc.resize(id, cols, rows)))
   }
 
   export function write(id: PtyID, data: string) {
-    runSyncInstance(Service.use((svc) => svc.write(id, data)))
+    runSync(Service.use((svc) => svc.write(id, data)))
   }
 
   export function connect(id: PtyID, ws: Socket, cursor?: number) {
-    return runSyncInstance(Service.use((svc) => svc.connect(id, ws, cursor)))
+    return runSync(Service.use((svc) => svc.connect(id, ws, cursor)))
   }
 
   // Async facades
   export async function create(input: CreateInput) {
-    return runPromiseInstance(Service.use((svc) => svc.create(input)))
+    return run(Service.use((svc) => svc.create(input)))
   }
 
   export async function update(id: PtyID, input: UpdateInput) {
-    return runPromiseInstance(Service.use((svc) => svc.update(id, input)))
+    return run(Service.use((svc) => svc.update(id, input)))
   }
 
   export async function remove(id: PtyID) {
-    return runPromiseInstance(Service.use((svc) => svc.remove(id)))
+    return run(Service.use((svc) => svc.remove(id)))
   }
 }

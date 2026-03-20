@@ -12,9 +12,9 @@ import z from "zod"
 import { Global } from "../global"
 import { Instance } from "../project/instance"
 import { Filesystem } from "../util/filesystem"
+import { Glob } from "../util/glob"
 import { Log } from "../util/log"
 import { Protected } from "./protected"
-import { Ripgrep } from "./ripgrep"
 
 export namespace File {
   export const Info = z
@@ -401,7 +401,11 @@ export namespace File {
             next.dirs = Array.from(dirs).toSorted()
           } else {
             const seen = new Set<string>()
-            for await (const file of Ripgrep.files({ cwd: instance.directory })) {
+            for (const file of (await Glob.scan("**/*", {
+              cwd: instance.directory,
+              include: "file",
+              dot: true,
+            })).toSorted((a, b) => a.localeCompare(b))) {
               next.files.push(file)
               let current = file
               while (true) {

@@ -2,7 +2,7 @@ import { EOL } from "os"
 import { File } from "../../../file"
 import { bootstrap } from "../../bootstrap"
 import { cmd } from "../cmd"
-import { Ripgrep } from "@/file/ripgrep"
+import { Fff } from "@/file/fff"
 
 const FileSearchCommand = cmd({
   command: "search <query>",
@@ -77,7 +77,7 @@ const FileTreeCommand = cmd({
       default: process.cwd(),
     }),
   async handler(args) {
-    const files = await Ripgrep.tree({ cwd: args.dir, limit: 200 })
+    const files = await Fff.tree({ cwd: args.dir, limit: 200 })
     console.log(JSON.stringify(files, null, 2))
   },
 })

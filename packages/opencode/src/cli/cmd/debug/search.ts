@@ -1,33 +1,34 @@
 import { EOL } from "os"
-import { Ripgrep } from "../../../file/ripgrep"
+import { Fff } from "../../../file/fff"
 import { Instance } from "../../../project/instance"
 import { bootstrap } from "../../bootstrap"
 import { cmd } from "../cmd"
+import { Glob } from "@/util/glob"
 
-export const RipgrepCommand = cmd({
-  command: "rg",
-  describe: "ripgrep debugging utilities",
-  builder: (yargs) => yargs.command(TreeCommand).command(FilesCommand).command(SearchCommand).demandCommand(),
+export const SearchCommand = cmd({
+  command: "search",
+  describe: "fff search debugging utilities",
+  builder: (yargs) => yargs.command(TreeCommand).command(FilesCommand).command(ContentCommand).demandCommand(),
   async handler() {},
 })
 
 const TreeCommand = cmd({
   command: "tree",
-  describe: "show file tree using ripgrep",
+  describe: "show file tree using fff",
   builder: (yargs) =>
     yargs.option("limit", {
       type: "number",
     }),
   async handler(args) {
     await bootstrap(process.cwd(), async () => {
-      process.stdout.write((await Ripgrep.tree({ cwd: Instance.directory, limit: args.limit })) + EOL)
+      process.stdout.write((await Fff.tree({ cwd: Instance.directory, limit: args.limit })) + EOL)
     })
   },
 })
 
 const FilesCommand = cmd({
   command: "files",
-  describe: "list files using ripgrep",
+  describe: "list files using fff",
   builder: (yargs) =>
     yargs
       .option("query", {
@@ -44,22 +45,24 @@ const FilesCommand = cmd({
       }),
   async handler(args) {
     await bootstrap(process.cwd(), async () => {
-      const files: string[] = []
-      for await (const file of Ripgrep.files({
+      const limit = args.limit ?? 100
+      const files = (await Glob.scan("**/*", {
         cwd: Instance.directory,
-        glob: args.glob ? [args.glob] : undefined,
-      })) {
-        files.push(file)
-        if (args.limit && files.length >= args.limit) break
-      }
+        include: "file",
+        dot: true,
+      }))
+        .map((x) => x.replaceAll("\\", "/"))
+        .filter((x) => Fff.allowed({ rel: x, hidden: true, glob: args.glob ? [args.glob] : undefined }))
+        .filter((x) => !args.query || x.includes(args.query))
+        .slice(0, limit)
       process.stdout.write(files.join(EOL) + EOL)
     })
   },
 })
 
-const SearchCommand = cmd({
-  command: "search <pattern>",
-  describe: "search file contents using ripgrep",
+const ContentCommand = cmd({
+  command: "content <pattern>",
+  describe: "search file contents using fff",
   builder: (yargs) =>
     yargs
       .positional("pattern", {
@@ -76,12 +79,12 @@ const SearchCommand = cmd({
         description: "Limit number of results",
       }),
   async handler(args) {
-    const results = await Ripgrep.search({
+    const rows = await Fff.search({
       cwd: process.cwd(),
       pattern: args.pattern,
       glob: args.glob as string[] | undefined,
       limit: args.limit,
     })
-    process.stdout.write(JSON.stringify(results, null, 2) + EOL)
+    process.stdout.write(JSON.stringify(rows, null, 2) + EOL)
   },
 })

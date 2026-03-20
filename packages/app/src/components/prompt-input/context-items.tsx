@@ -101,7 +101,7 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                       type="button"
                       icon="close-small"
                       variant="ghost"
-                      class="ml-auto size-3.5 text-text-weak hover:text-text-strong transition-all"
+                      class="ml-auto size-3.5 text-text-weak hover:text-text-strong opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
                       onClick={(e) => {
                         e.stopPropagation()
                         props.remove(row.item)

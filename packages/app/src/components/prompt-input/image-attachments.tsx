@@ -1,5 +1,6 @@
 import { Component, Show } from "solid-js"
 import { Icon } from "@opencode-ai/ui/icon"
+import { FileIcon } from "@opencode-ai/ui/file-icon"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import type { ImageAttachmentPart } from "@/context/prompt"
 
@@ -50,7 +51,7 @@ export const PromptImageAttachment: Component<PromptImageAttachmentProps> = (pro
           when={props.attachment.mime.startsWith("image/")}
           fallback={
             <div class={fallbackClass}>
-              <Icon name="folder" class="size-6 text-text-weak" />
+              <FileIcon node={{ path: props.attachment.filename, type: "file" }} class="size-5" />
             </div>
           }
         >

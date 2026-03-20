@@ -28,7 +28,7 @@ import { createVertex } from "@ai-sdk/google-vertex"
 import { createVertexAnthropic } from "@ai-sdk/google-vertex/anthropic"
 import { createOpenAI } from "@ai-sdk/openai"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
-import { createOpenRouter, type LanguageModelV2 } from "@openrouter/ai-sdk-provider"
+import { createOpenRouter } from "@openrouter/ai-sdk-provider"
 import { createOpenaiCompatible as createGitHubCopilotOpenAICompatible } from "./sdk/copilot"
 import { createXai } from "@ai-sdk/xai"
 import { createMistral } from "@ai-sdk/mistral"
@@ -40,7 +40,7 @@ import { createGateway } from "@ai-sdk/gateway"
 import { createTogetherAI } from "@ai-sdk/togetherai"
 import { createPerplexity } from "@ai-sdk/perplexity"
 import { createVercel } from "@ai-sdk/vercel"
-import { createGitLab, VERSION as GITLAB_PROVIDER_VERSION } from "@gitlab/gitlab-ai-provider"
+// import { createGitLab, VERSION as GITLAB_PROVIDER_VERSION } from "@gitlab/gitlab-ai-provider"
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers"
 import { GoogleAuth } from "google-auth-library"
 import { ProviderTransform } from "./transform"
@@ -104,7 +104,9 @@ export namespace Provider {
     })
   }
 
-  const BUNDLED_PROVIDERS: Record<string, (options: any) => SDK> = {
+  type BundledSDK = Pick<SDK, "languageModel">
+
+  const BUNDLED_PROVIDERS: Record<string, (options: any) => BundledSDK> = {
     "@ai-sdk/amazon-bedrock": createAmazonBedrock,
     "@ai-sdk/anthropic": createAnthropic,
     "@ai-sdk/azure": createAzure,
@@ -124,7 +126,7 @@ export namespace Provider {
     "@ai-sdk/togetherai": createTogetherAI,
     "@ai-sdk/perplexity": createPerplexity,
     "@ai-sdk/vercel": createVercel,
-    "@gitlab/gitlab-ai-provider": createGitLab,
+    // "@gitlab/gitlab-ai-provider": createGitLab,
     // @ts-ignore (TODO: kill this code so we dont have to maintain it)
     "@ai-sdk/github-copilot": createGitHubCopilotOpenAICompatible,
   }
@@ -514,49 +516,49 @@ export namespace Provider {
         },
       }
     },
-    gitlab: async (input) => {
-      const instanceUrl = Env.get("GITLAB_INSTANCE_URL") || "https://gitlab.com"
-
-      const auth = await Auth.get(input.id)
-      const apiKey = await (async () => {
-        if (auth?.type === "oauth") return auth.access
-        if (auth?.type === "api") return auth.key
-        return Env.get("GITLAB_TOKEN")
-      })()
-
-      const config = await Config.get()
-      const providerConfig = config.provider?.["gitlab"]
-
-      const aiGatewayHeaders = {
-        "User-Agent": `opencode/${Installation.VERSION} gitlab-ai-provider/${GITLAB_PROVIDER_VERSION} (${os.platform()} ${os.release()}; ${os.arch()})`,
-        "anthropic-beta": "context-1m-2025-08-07",
-        ...(providerConfig?.options?.aiGatewayHeaders || {}),
-      }
-
-      return {
-        autoload: !!apiKey,
-        options: {
-          instanceUrl,
-          apiKey,
-          aiGatewayHeaders,
-          featureFlags: {
-            duo_agent_platform_agentic_chat: true,
-            duo_agent_platform: true,
-            ...(providerConfig?.options?.featureFlags || {}),
-          },
-        },
-        async getModel(sdk: ReturnType<typeof createGitLab>, modelID: string) {
-          return sdk.agenticChat(modelID, {
-            aiGatewayHeaders,
-            featureFlags: {
-              duo_agent_platform_agentic_chat: true,
-              duo_agent_platform: true,
-              ...(providerConfig?.options?.featureFlags || {}),
-            },
-          })
-        },
-      }
-    },
+    // gitlab: async (input) => {
+    //   const instanceUrl = Env.get("GITLAB_INSTANCE_URL") || "https://gitlab.com"
+    //
+    //   const auth = await Auth.get(input.id)
+    //   const apiKey = await (async () => {
+    //     if (auth?.type === "oauth") return auth.access
+    //     if (auth?.type === "api") return auth.key
+    //     return Env.get("GITLAB_TOKEN")
+    //   })()
+    //
+    //   const config = await Config.get()
+    //   const providerConfig = config.provider?.["gitlab"]
+    //
+    //   const aiGatewayHeaders = {
+    //     "User-Agent": `opencode/${Installation.VERSION} gitlab-ai-provider/${GITLAB_PROVIDER_VERSION} (${os.platform()} ${os.release()}; ${os.arch()})`,
+    //     "anthropic-beta": "context-1m-2025-08-07",
+    //     ...(providerConfig?.options?.aiGatewayHeaders || {}),
+    //   }
+    //
+    //   return {
+    //     autoload: !!apiKey,
+    //     options: {
+    //       instanceUrl,
+    //       apiKey,
+    //       aiGatewayHeaders,
+    //       featureFlags: {
+    //         duo_agent_platform_agentic_chat: true,
+    //         duo_agent_platform: true,
+    //         ...(providerConfig?.options?.featureFlags || {}),
+    //       },
+    //     },
+    //     async getModel(sdk: ReturnType<typeof createGitLab>, modelID: string) {
+    //       return sdk.agenticChat(modelID, {
+    //         aiGatewayHeaders,
+    //         featureFlags: {
+    //           duo_agent_platform_agentic_chat: true,
+    //           duo_agent_platform: true,
+    //           ...(providerConfig?.options?.featureFlags || {}),
+    //         },
+    //       })
+    //     },
+    //   }
+    // },
     "cloudflare-workers-ai": async (input) => {
       const accountId = Env.get("CLOUDFLARE_ACCOUNT_ID")
       if (!accountId) return { autoload: false }
@@ -846,14 +848,14 @@ export namespace Provider {
     }
 
     const providers: Record<ProviderID, Info> = {} as Record<ProviderID, Info>
-    const languages = new Map<string, LanguageModelV2>()
+    const languages = new Map<string, ReturnType<SDK["languageModel"]>>()
     const modelLoaders: {
       [providerID: string]: CustomModelLoader
     } = {}
     const varsLoaders: {
       [providerID: string]: CustomVarsLoader
     } = {}
-    const sdk = new Map<string, SDK>()
+    const sdk = new Map<string, BundledSDK>()
 
     log.info("init")
 
@@ -1240,7 +1242,7 @@ export namespace Provider {
     return info
   }
 
-  export async function getLanguage(model: Model): Promise<LanguageModelV2> {
+  export async function getLanguage(model: Model): Promise<ReturnType<SDK["languageModel"]>> {
     const s = await state()
     const key = `${model.providerID}/${model.id}`
     if (s.models.has(key)) return s.models.get(key)!

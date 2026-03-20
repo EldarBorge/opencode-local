@@ -35,6 +35,7 @@ export namespace ProviderTransform {
       case "@ai-sdk/google-vertex/anthropic":
         return "anthropic"
       case "@ai-sdk/google-vertex":
+        return "vertex"
       case "@ai-sdk/google":
         return "google"
       case "@ai-sdk/gateway":

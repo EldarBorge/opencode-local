@@ -9,7 +9,7 @@ import { Instance } from "@/project/instance"
 
 export const runtime = ManagedRuntime.make(
   Layer.mergeAll(
-    Account.defaultLayer, //
+    Account.defaultLayer,
     Installation.defaultLayer,
     Truncate.defaultLayer,
     Instances.layer,

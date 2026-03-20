@@ -2,7 +2,8 @@ import { Hono } from "hono"
 import { describeRoute, validator } from "hono-openapi"
 import { resolver } from "hono-openapi"
 import { QuestionID } from "@/question/schema"
-import { Question } from "../../question"
+import { Question } from "../../question/service"
+import { Question as QuestionApi } from "../../question"
 import z from "zod"
 import { errors } from "../error"
 import { lazy } from "../../util/lazy"
@@ -27,7 +28,7 @@ export const QuestionRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        const questions = await Question.list()
+        const questions = await QuestionApi.list()
         return c.json(questions)
       },
     )
@@ -59,7 +60,7 @@ export const QuestionRoutes = lazy(() =>
       async (c) => {
         const params = c.req.valid("param")
         const json = c.req.valid("json")
-        await Question.reply({
+        await QuestionApi.reply({
           requestID: params.requestID,
           answers: json.answers,
         })
@@ -92,7 +93,7 @@ export const QuestionRoutes = lazy(() =>
       ),
       async (c) => {
         const params = c.req.valid("param")
-        await Question.reject(params.requestID)
+        await QuestionApi.reject(params.requestID)
         return c.json(true)
       },
     ),

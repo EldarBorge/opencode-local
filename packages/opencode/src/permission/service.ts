@@ -105,16 +105,18 @@ export namespace Permission {
   export const AskInput = Request.partial({ id: true }).extend({
     ruleset: Ruleset,
   })
+  export type AskInput = z.infer<typeof AskInput>
 
   export const ReplyInput = z.object({
     requestID: PermissionID.zod,
     reply: Reply,
     message: z.string().optional(),
   })
+  export type ReplyInput = z.infer<typeof ReplyInput>
 
   export interface Interface {
-    readonly ask: (input: z.infer<typeof AskInput>) => Effect.Effect<void, Error>
-    readonly reply: (input: z.infer<typeof ReplyInput>) => Effect.Effect<void>
+    readonly ask: (input: AskInput) => Effect.Effect<void, Error>
+    readonly reply: (input: ReplyInput) => Effect.Effect<void>
     readonly list: () => Effect.Effect<Request[]>
   }
 
@@ -140,7 +142,7 @@ export namespace Permission {
       const pending = new Map<PermissionID, PendingEntry>()
       const approved: Ruleset = row?.data ?? []
 
-      const ask = Effect.fn("Permission.ask")(function* (input: z.infer<typeof AskInput>) {
+      const ask = Effect.fn("Permission.ask")(function* (input: AskInput) {
         const { ruleset, ...request } = input
         let needsAsk = false
 
@@ -176,7 +178,7 @@ export namespace Permission {
         )
       })
 
-      const reply = Effect.fn("Permission.reply")(function* (input: z.infer<typeof ReplyInput>) {
+      const reply = Effect.fn("Permission.reply")(function* (input: ReplyInput) {
         const existing = pending.get(input.requestID)
         if (!existing) return
 

@@ -8,13 +8,15 @@ import z from "zod"
 import { Provider } from "../provider/provider"
 import { NamedError } from "@opencode-ai/util/error"
 import { LSP } from "../lsp"
+import { Format as FormatService } from "../format/service"
 import { Format } from "../format"
 import { TuiRoutes } from "./routes/tui"
 import { Instance } from "../project/instance"
 import { Vcs } from "../project/vcs"
 import { runPromiseInstance } from "@/effect/runtime"
 import { Agent } from "../agent/agent"
-import { Skill } from "../skill/skill"
+import { Skill as SkillService } from "../skill/service"
+import { Skill } from "../skill"
 import { Auth } from "../auth"
 import { Flag } from "../flag/flag"
 import { Command } from "../command"
@@ -444,7 +446,7 @@ export namespace Server {
               description: "List of skills",
               content: {
                 "application/json": {
-                  schema: resolver(Skill.Info.array()),
+                  schema: resolver(SkillService.Info.array()),
                 },
               },
             },
@@ -487,7 +489,7 @@ export namespace Server {
               description: "Formatter status",
               content: {
                 "application/json": {
-                  schema: resolver(Format.Status.array()),
+                  schema: resolver(FormatService.Status.array()),
                 },
               },
             },

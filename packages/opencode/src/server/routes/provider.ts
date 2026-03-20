@@ -4,7 +4,8 @@ import z from "zod"
 import { Config } from "../../config/config"
 import { Provider } from "../../provider/provider"
 import { ModelsDev } from "../../provider/models"
-import { ProviderAuth } from "../../provider/auth"
+import { ProviderAuth } from "../../provider/auth-service"
+import { ProviderAuth as ProviderAuthApi } from "../../provider/auth"
 import { ProviderID } from "../../provider/schema"
 import { mapValues } from "remeda"
 import { errors } from "../error"
@@ -81,7 +82,7 @@ export const ProviderRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        return c.json(await ProviderAuth.methods())
+        return c.json(await ProviderAuthApi.methods())
       },
     )
     .post(
@@ -118,7 +119,7 @@ export const ProviderRoutes = lazy(() =>
       async (c) => {
         const providerID = c.req.valid("param").providerID
         const { method, inputs } = c.req.valid("json")
-        const result = await ProviderAuth.authorize({
+        const result = await ProviderAuthApi.authorize({
           providerID,
           method,
           inputs,
@@ -160,7 +161,7 @@ export const ProviderRoutes = lazy(() =>
       async (c) => {
         const providerID = c.req.valid("param").providerID
         const { method, code } = c.req.valid("json")
-        await ProviderAuth.callback({
+        await ProviderAuthApi.callback({
           providerID,
           method,
           code,

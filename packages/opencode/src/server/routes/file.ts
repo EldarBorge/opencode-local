@@ -1,7 +1,8 @@
 import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
-import { File } from "../../file"
+import { File } from "../../file/service"
+import { File as FileApi } from "../../file"
 import { Ripgrep } from "../../file/ripgrep"
 import { LSP } from "../../lsp"
 import { Instance } from "../../project/instance"
@@ -73,7 +74,7 @@ export const FileRoutes = lazy(() =>
         const dirs = c.req.valid("query").dirs
         const type = c.req.valid("query").type
         const limit = c.req.valid("query").limit
-        const results = await File.search({
+        const results = await FileApi.search({
           query,
           limit: limit ?? 10,
           dirs: dirs !== "false",
@@ -139,7 +140,7 @@ export const FileRoutes = lazy(() =>
       ),
       async (c) => {
         const path = c.req.valid("query").path
-        const content = await File.list(path)
+        const content = await FileApi.list(path)
         return c.json(content)
       },
     )
@@ -168,7 +169,7 @@ export const FileRoutes = lazy(() =>
       ),
       async (c) => {
         const path = c.req.valid("query").path
-        const content = await File.read(path)
+        const content = await FileApi.read(path)
         return c.json(content)
       },
     )
@@ -190,7 +191,7 @@ export const FileRoutes = lazy(() =>
         },
       }),
       async (c) => {
-        const content = await File.status()
+        const content = await FileApi.status()
         return c.json(content)
       },
     ),

@@ -1,5 +1,6 @@
 import { Component, Show } from "solid-js"
 import { Icon } from "@opencode-ai/ui/icon"
+import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
 import type { ImageAttachmentPart } from "@/context/prompt"
 
@@ -21,7 +22,7 @@ const fallbackClass =
   "size-12 rounded-[6px] bg-background-stronger flex items-center justify-center shadow-xs-border cursor-default"
 const imageClass = "size-12 rounded-[6px] object-cover shadow-xs-border"
 const removeClass =
-  "absolute -top-1.5 -right-1.5 size-5 rounded-full bg-surface-raised-stronger-non-alpha border border-border-base flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-raised-base-hover"
+  "absolute top-1 right-1 size-3.5 text-text-weak hover:text-text-strong opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
 
 export const PromptImageAttachments: Component<PromptImageAttachmentsProps> = (props) => {
   return (
@@ -59,14 +60,14 @@ export const PromptImageAttachment: Component<PromptImageAttachmentProps> = (pro
             onClick={() => props.onOpen(props.attachment)}
           />
         </Show>
-        <button
+        <IconButton
           type="button"
-          onClick={() => props.onRemove(props.attachment.id)}
+          icon="close-small"
+          variant="ghost"
           class={removeClass}
+          onClick={() => props.onRemove(props.attachment.id)}
           aria-label={props.removeLabel}
-        >
-          <Icon name="close" class="size-3 text-text-weak" />
-        </button>
+        />
       </div>
     </Tooltip>
   )

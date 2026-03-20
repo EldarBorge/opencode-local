@@ -76,7 +76,7 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
               >
                 <div
                   classList={{
-                    "group flex flex-col rounded-[6px] pl-2 pr-1 py-1 max-w-[200px] h-12 cursor-default transition-all transition-transform shadow-xs-border hover:shadow-xs-border-hover": true,
+                    "group relative flex flex-col rounded-[6px] pl-2 pr-7 py-1 max-w-[200px] h-12 cursor-default transition-all transition-transform shadow-xs-border hover:shadow-xs-border-hover": true,
                     "hover:bg-surface-interactive-weak": !!row.item.commentID && !selected,
                     "bg-surface-interactive-hover hover:bg-surface-interactive-hover shadow-xs-border-hover": selected,
                     "bg-background-stronger": !selected,
@@ -97,21 +97,21 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                         )}
                       </Show>
                     </div>
-                    <IconButton
-                      type="button"
-                      icon="close-small"
-                      variant="ghost"
-                      class="ml-auto size-3.5 text-text-weak hover:text-text-strong opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        props.remove(row.item)
-                      }}
-                      aria-label={props.t("prompt.context.removeFile")}
-                    />
                   </div>
                   <Show when={row.item.comment}>
-                    {(comment) => <div class="text-12-regular text-text-strong ml-5 pr-1 truncate">{comment()}</div>}
+                    {(comment) => <div class="text-12-regular text-text-strong ml-5 truncate">{comment()}</div>}
                   </Show>
+                  <IconButton
+                    type="button"
+                    icon="close-small"
+                    variant="ghost"
+                    class="absolute top-1 right-1 size-3.5 text-text-weak hover:text-text-strong opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      props.remove(row.item)
+                    }}
+                    aria-label={props.t("prompt.context.removeFile")}
+                  />
                 </div>
               </Tooltip>
             )

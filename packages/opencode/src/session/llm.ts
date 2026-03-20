@@ -1,4 +1,3 @@
-import { Installation } from "@/installation"
 import { Provider } from "@/provider/provider"
 import { Log } from "@/util/log"
 import {
@@ -41,8 +40,6 @@ export namespace LLM {
     retries?: number
     toolChoice?: "auto" | "required" | "none"
   }
-
-  export type StreamOutput = StreamTextResult<ToolSet, unknown>
 
   export async function stream(input: StreamInput) {
     const l = log

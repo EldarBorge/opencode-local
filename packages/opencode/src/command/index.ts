@@ -38,6 +38,8 @@ export namespace Command {
       agent: z.string().optional(),
       model: z.string().optional(),
       source: z.enum(["command", "mcp", "skill"]).optional(),
+      // workaround for zod not supporting async functions natively so we use getters
+      // https://zod.dev/v4/changelog?id=zfunction
       template: z.promise(z.string()).or(z.string()),
       subtask: z.boolean().optional(),
       hints: z.array(z.string()),
@@ -46,6 +48,7 @@ export namespace Command {
       ref: "Command",
     })
 
+  // for some reason zod is inferring `string` for z.promise(z.string()).or(z.string()) so we have to manually override it
   export type Info = Omit<z.infer<typeof Info>, "template"> & { template: Promise<string> | string }
 
   export function hints(template: string) {

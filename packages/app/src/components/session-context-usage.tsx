@@ -101,10 +101,10 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
 
   return (
     <Show when={params.id}>
-      <Tooltip value={tooltipValue()} placement={props.placement ?? "top"}>
-        <Switch>
-          <Match when={variant() === "indicator"}>{circle()}</Match>
-          <Match when={true}>
+      <Switch>
+        <Match when={variant() === "indicator"}>{circle()}</Match>
+        <Match when={true}>
+          <Tooltip value={tooltipValue()} placement={props.placement ?? "top"}>
             <Button
               type="button"
               variant="ghost"
@@ -114,9 +114,9 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
             >
               {circle()}
             </Button>
-          </Match>
-        </Switch>
-      </Tooltip>
+          </Tooltip>
+        </Match>
+      </Switch>
     </Show>
   )
 }

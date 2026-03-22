@@ -93,3 +93,23 @@ test("context panel can open file picker from context actions", async ({ page, s
     await expect(dialog).toHaveCount(0)
   })
 })
+
+test("context tooltip only appears from the session header trigger", async ({ page, sdk, gotoSession }) => {
+  await withSession(sdk, `e2e context tooltip ${Date.now()}`, async (session) => {
+    await seedContextSession({ sessionID: session.id, sdk })
+    await gotoSession(session.id)
+
+    const trigger = contextButton(page)
+    await expect(trigger).toBeVisible()
+    await trigger.click()
+
+    const tab = page.getByRole("tab", { name: "Context" })
+    await expect(tab).toBeVisible()
+
+    await tab.locator('[data-component="progress-circle"]').hover()
+    await expect(page.locator('[data-component="tooltip"]')).toHaveCount(0)
+
+    await trigger.hover()
+    await expect(page.locator('[data-component="tooltip"]')).toBeVisible()
+  })
+})

@@ -34,6 +34,8 @@ type PromptAttachmentsInput = {
   readClipboardImage?: () => Promise<File | null>
 }
 
+type AddState = "added" | "failed" | "unsupported" | "limit"
+
 export function createPromptAttachments(input: PromptAttachmentsInput) {
   const prompt = usePrompt()
   const language = useLanguage()
@@ -52,7 +54,7 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
     })
   }
 
-  const add = async (file: File) => {
+  const add = async (file: File): Promise<AddState> => {
     const mime = await attachmentMime(file)
     if (!mime) {
       return "unsupported" as const
@@ -80,16 +82,15 @@ export function createPromptAttachments(input: PromptAttachmentsInput) {
   }
 
   const addAttachments = async (list: File[]) => {
-    const result = { added: false, limit: false, unsupported: false }
+    const result = { added: false, unsupported: false }
     for (const file of list) {
       const state = await add(file)
+      if (state === "limit") {
+        warnLimit()
+        return result.added
+      }
       result.added = result.added || state === "added"
-      result.limit = result.limit || state === "limit"
       result.unsupported = result.unsupported || state === "unsupported"
-    }
-    if (result.limit) {
-      warnLimit()
-      return result.added
     }
     if (!result.added && result.unsupported) warn()
     return result.added

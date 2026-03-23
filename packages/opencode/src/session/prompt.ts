@@ -320,7 +320,13 @@ export namespace SessionPrompt {
       if (!lastUser) throw new Error("No user message found in stream. This should never happen.")
       if (
         lastAssistant?.finish &&
-        !["tool-calls", "other"].includes(lastAssistant.finish) &&
+        ![
+          "tool-calls",
+          // in v6 unknown became other but other existed in v5 too and was distinctly different
+          // I think there are certain providers that used to have bad stop reasons, not rlly sure which
+          // ones if any still have this?
+          // "unknown",
+        ].includes(lastAssistant.finish) &&
         lastUser.id < lastAssistant.id
       ) {
         log.info("exiting loop", { sessionID })

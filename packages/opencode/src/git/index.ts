@@ -19,7 +19,7 @@ export namespace Git {
   ] as const
 
   const out = (result: { text(): string }) => result.text().trim()
-  const split = (text: string) => text.split("\0").filter(Boolean)
+  const nuls = (text: string) => text.split("\0").filter(Boolean)
   const fail = (err: unknown) =>
     ({
       exitCode: 1,
@@ -72,51 +72,13 @@ export namespace Git {
     readonly stats: (cwd: string, ref: string) => Effect.Effect<Stat[]>
   }
 
-  const kind = (code?: string): Kind => {
+  const kind = (code: string): Kind => {
     if (code === "??") return "added"
-    if (code?.includes("U")) return "modified"
-    if (code?.includes("A") && !code.includes("D")) return "added"
-    if (code?.includes("D") && !code.includes("A")) return "deleted"
+    if (code.includes("U")) return "modified"
+    if (code.includes("A") && !code.includes("D")) return "added"
+    if (code.includes("D") && !code.includes("A")) return "deleted"
     return "modified"
   }
-
-  const parseStatus = (text: string) =>
-    split(text).flatMap((item) => {
-      const file = item.slice(3)
-      if (!file) return []
-      const code = item.slice(0, 2)
-      return [{ file, code, status: kind(code) } satisfies Item]
-    })
-
-  const parseNames = (text: string) => {
-    const list = split(text)
-    return list.flatMap((code, idx) => {
-      if (idx % 2 !== 0) return []
-      const file = list[idx + 1]
-      if (!code || !file) return []
-      return [{ file, code, status: kind(code) } satisfies Item]
-    })
-  }
-
-  const parseStats = (text: string) =>
-    split(text).flatMap((item) => {
-      const a = item.indexOf("\t")
-      const b = item.indexOf("\t", a + 1)
-      if (a === -1 || b === -1) return []
-      const file = item.slice(b + 1)
-      if (!file) return []
-      const adds = item.slice(0, a)
-      const dels = item.slice(a + 1, b)
-      const additions = adds === "-" ? 0 : Number.parseInt(adds || "0", 10)
-      const deletions = dels === "-" ? 0 : Number.parseInt(dels || "0", 10)
-      return [
-        {
-          file,
-          additions: Number.isFinite(additions) ? additions : 0,
-          deletions: Number.isFinite(deletions) ? deletions : 0,
-        } satisfies Stat,
-      ]
-    })
 
   export class Service extends ServiceMap.Service<Service, Interface>()("@opencode/Git") {}
 
@@ -233,23 +195,51 @@ export namespace Git {
       })
 
       const status = Effect.fn("Git.status")(function* (cwd: string) {
-        return parseStatus(
+        return nuls(
           yield* text(["status", "--porcelain=v1", "--untracked-files=all", "--no-renames", "-z", "--", "."], {
             cwd,
           }),
-        )
+        ).flatMap((item) => {
+          const file = item.slice(3)
+          if (!file) return []
+          const code = item.slice(0, 2)
+          return [{ file, code, status: kind(code) } satisfies Item]
+        })
       })
 
       const diff = Effect.fn("Git.diff")(function* (cwd: string, ref: string) {
-        return parseNames(
+        const list = nuls(
           yield* text(["diff", "--no-ext-diff", "--no-renames", "--name-status", "-z", ref, "--", "."], { cwd }),
         )
+        return list.flatMap((code, idx) => {
+          if (idx % 2 !== 0) return []
+          const file = list[idx + 1]
+          if (!code || !file) return []
+          return [{ file, code, status: kind(code) } satisfies Item]
+        })
       })
 
       const stats = Effect.fn("Git.stats")(function* (cwd: string, ref: string) {
-        return parseStats(
+        return nuls(
           yield* text(["diff", "--no-ext-diff", "--no-renames", "--numstat", "-z", ref, "--", "."], { cwd }),
-        )
+        ).flatMap((item) => {
+          const a = item.indexOf("\t")
+          const b = item.indexOf("\t", a + 1)
+          if (a === -1 || b === -1) return []
+          const file = item.slice(b + 1)
+          if (!file) return []
+          const adds = item.slice(0, a)
+          const dels = item.slice(a + 1, b)
+          const additions = adds === "-" ? 0 : Number.parseInt(adds || "0", 10)
+          const deletions = dels === "-" ? 0 : Number.parseInt(dels || "0", 10)
+          return [
+            {
+              file,
+              additions: Number.isFinite(additions) ? additions : 0,
+              deletions: Number.isFinite(deletions) ? deletions : 0,
+            } satisfies Stat,
+          ]
+        })
       })
 
       return Service.of({

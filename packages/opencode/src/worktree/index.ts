@@ -573,49 +573,18 @@ export namespace Worktree {
       throw new ResetFailedError({ message: "Worktree not found" })
     }
 
-    const remoteList = await Git.run(["remote"], { cwd: Instance.worktree })
-    if (remoteList.exitCode !== 0) {
-      throw new ResetFailedError({ message: errorText(remoteList) || "Failed to list git remotes" })
-    }
-
-    const remotes = outputText(remoteList.stdout)
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-
-    const remote = remotes.includes("origin")
-      ? "origin"
-      : remotes.length === 1
-        ? remotes[0]
-        : remotes.includes("upstream")
-          ? "upstream"
-          : ""
-
-    const remoteHead = remote
-      ? await Git.run(["symbolic-ref", `refs/remotes/${remote}/HEAD`], { cwd: Instance.worktree })
-      : { exitCode: 1, stdout: undefined, stderr: undefined }
-
-    const remoteRef = remoteHead.exitCode === 0 ? outputText(remoteHead.stdout) : ""
-    const remoteTarget = remoteRef ? remoteRef.replace(/^refs\/remotes\//, "") : ""
-    const remoteBranch = remote && remoteTarget.startsWith(`${remote}/`) ? remoteTarget.slice(`${remote}/`.length) : ""
-
-    const mainCheck = await Git.run(["show-ref", "--verify", "--quiet", "refs/heads/main"], {
-      cwd: Instance.worktree,
-    })
-    const masterCheck = await Git.run(["show-ref", "--verify", "--quiet", "refs/heads/master"], {
-      cwd: Instance.worktree,
-    })
-    const localBranch = mainCheck.exitCode === 0 ? "main" : masterCheck.exitCode === 0 ? "master" : ""
-
-    const target = remoteBranch ? `${remote}/${remoteBranch}` : localBranch
-    if (!target) {
+    const base = await Git.defaultBranch(Instance.worktree)
+    if (!base) {
       throw new ResetFailedError({ message: "Default branch not found" })
     }
 
-    if (remoteBranch) {
-      const fetch = await Git.run(["fetch", remote, remoteBranch], { cwd: Instance.worktree })
+    const sep = base.ref.indexOf("/")
+    if (base.ref !== base.name && sep > 0) {
+      const remote = base.ref.slice(0, sep)
+      const branch = base.ref.slice(sep + 1)
+      const fetch = await Git.run(["fetch", remote, branch], { cwd: Instance.worktree })
       if (fetch.exitCode !== 0) {
-        throw new ResetFailedError({ message: errorText(fetch) || `Failed to fetch ${target}` })
+        throw new ResetFailedError({ message: errorText(fetch) || `Failed to fetch ${base.ref}` })
       }
     }
 
@@ -625,7 +594,7 @@ export namespace Worktree {
 
     const worktreePath = entry.path
 
-    const resetToTarget = await Git.run(["reset", "--hard", target], { cwd: worktreePath })
+    const resetToTarget = await Git.run(["reset", "--hard", base.ref], { cwd: worktreePath })
     if (resetToTarget.exitCode !== 0) {
       throw new ResetFailedError({ message: errorText(resetToTarget) || "Failed to reset worktree to target" })
     }

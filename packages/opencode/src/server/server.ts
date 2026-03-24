@@ -331,9 +331,10 @@ export namespace Server {
           },
         }),
         async (c) => {
+          const [branch, default_branch] = await Promise.all([Vcs.branch(), Vcs.defaultBranch()])
           return c.json({
-            branch: await Vcs.branch(),
-            default_branch: await Vcs.defaultBranch(),
+            branch,
+            default_branch,
           })
         },
       )

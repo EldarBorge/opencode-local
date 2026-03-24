@@ -236,7 +236,7 @@ describe("tool.read truncation", () => {
         const read = await ReadTool.init()
         const result = await read.execute({ filePath: path.join(tmp.path, "many-lines.txt"), limit: 10 }, ctx)
         expect(result.metadata.truncated).toBe(true)
-        expect(result.output).toContain("Showing lines 1-10 of 100")
+        expect(result.output).toContain("Showing lines 1-10. Use offset=11")
         expect(result.output).toContain("Use offset=11")
         expect(result.output).toContain("line0")
         expect(result.output).toContain("line9")
@@ -414,6 +414,23 @@ describe("tool.read truncation", () => {
         expect(result.attachments?.[0]).not.toHaveProperty("id")
         expect(result.attachments?.[0]).not.toHaveProperty("sessionID")
         expect(result.attachments?.[0]).not.toHaveProperty("messageID")
+      },
+    })
+  })
+
+  test("rejects oversized image attachments", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "huge.png"), Buffer.alloc(6 * 1024 * 1024, 0))
+      },
+    })
+    await Instance.provide({
+      directory: tmp.path,
+      fn: async () => {
+        const read = await ReadTool.init()
+        await expect(read.execute({ filePath: path.join(tmp.path, "huge.png") }, ctx)).rejects.toThrow(
+          "Cannot attach file larger than 5 MB",
+        )
       },
     })
   })

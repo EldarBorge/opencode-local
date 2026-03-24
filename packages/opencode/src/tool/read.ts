@@ -17,6 +17,8 @@ const MAX_LINE_LENGTH = 2000
 const MAX_LINE_SUFFIX = `... (line truncated to ${MAX_LINE_LENGTH} chars)`
 const MAX_BYTES = 50 * 1024
 const MAX_BYTES_LABEL = `${MAX_BYTES / 1024} KB`
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+const MAX_ATTACHMENT_LABEL = `${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB`
 
 export const ReadTool = Tool.define("read", {
   description: DESCRIPTION,
@@ -122,6 +124,9 @@ export const ReadTool = Tool.define("read", {
     const isImage = mime.startsWith("image/") && mime !== "image/svg+xml" && mime !== "image/vnd.fastbidsheet"
     const isPdf = mime === "application/pdf"
     if (isImage || isPdf) {
+      if (Number(stat.size) > MAX_ATTACHMENT_BYTES) {
+        throw new Error(`Cannot attach file larger than ${MAX_ATTACHMENT_LABEL}: ${filepath}`)
+      }
       const msg = `${isImage ? "Image" : "PDF"} read successfully`
       return {
         title,
@@ -167,7 +172,7 @@ export const ReadTool = Tool.define("read", {
 
         if (raw.length >= limit) {
           hasMoreLines = true
-          continue
+          break
         }
 
         const line = text.length > MAX_LINE_LENGTH ? text.substring(0, MAX_LINE_LENGTH) + MAX_LINE_SUFFIX : text
@@ -198,7 +203,6 @@ export const ReadTool = Tool.define("read", {
     let output = [`<path>${filepath}</path>`, `<type>file</type>`, "<content>"].join("\n")
     output += content.join("\n")
 
-    const totalLines = lines
     const lastReadLine = offset + raw.length - 1
     const nextOffset = lastReadLine + 1
     const truncated = hasMoreLines || truncatedByBytes
@@ -206,9 +210,9 @@ export const ReadTool = Tool.define("read", {
     if (truncatedByBytes) {
       output += `\n\n(Output capped at ${MAX_BYTES_LABEL}. Showing lines ${offset}-${lastReadLine}. Use offset=${nextOffset} to continue.)`
     } else if (hasMoreLines) {
-      output += `\n\n(Showing lines ${offset}-${lastReadLine} of ${totalLines}. Use offset=${nextOffset} to continue.)`
+      output += `\n\n(Showing lines ${offset}-${lastReadLine}. Use offset=${nextOffset} to continue.)`
     } else {
-      output += `\n\n(End of file - total ${totalLines} lines)`
+      output += `\n\n(End of file - total ${lines} lines)`
     }
     output += "\n</content>"
 

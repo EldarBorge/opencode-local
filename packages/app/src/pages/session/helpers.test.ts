@@ -157,4 +157,26 @@ describe("createSessionTabs", () => {
       dispose()
     })
   })
+
+  test("does not fall back to review when it is available but empty", () => {
+    createRoot((dispose) => {
+      const [state] = createStore({
+        active: undefined as string | undefined,
+        all: [],
+      })
+      const tabs = createMemo(() => ({ active: () => state.active, all: () => state.all }))
+      const result = createSessionTabs({
+        tabs,
+        pathFromTab: () => undefined,
+        normalizeTab: (tab) => tab,
+        review: () => true,
+        hasReview: () => false,
+      })
+
+      expect(result.activeTab()).toBe("empty")
+      expect(result.activeFileTab()).toBeUndefined()
+      expect(result.closableTab()).toBeUndefined()
+      dispose()
+    })
+  })
 })

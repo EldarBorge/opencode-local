@@ -425,7 +425,7 @@ export default function Page() {
     pathFromTab: file.pathFromTab,
     normalizeTab,
     review: reviewTab,
-    hasReview: canReview,
+    hasReview: hasSessionReview,
   })
   const contextOpen = tabState.contextOpen
   const openedTabs = tabState.openedTabs

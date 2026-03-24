@@ -1,15 +1,6 @@
 import { Provider } from "@/provider/provider"
 import { Log } from "@/util/log"
-import {
-  streamText,
-  wrapLanguageModel,
-  type ModelMessage,
-  type StreamTextResult,
-  type Tool,
-  type ToolSet,
-  tool,
-  jsonSchema,
-} from "ai"
+import { streamText, wrapLanguageModel, type ModelMessage, type Tool, tool, jsonSchema } from "ai"
 import { mergeDeep, pipe } from "remeda"
 import { GitLabWorkflowLanguageModel } from "gitlab-ai-provider"
 import { ProviderTransform } from "@/provider/transform"
@@ -22,6 +13,7 @@ import { SystemPrompt } from "./system"
 import { Flag } from "@/flag/flag"
 import { Permission } from "@/permission"
 import { Auth } from "@/auth"
+import { Installation } from "@/installation"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })

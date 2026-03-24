@@ -556,38 +556,66 @@ export default function Page() {
   let diffFrame: number | undefined
   let diffTimer: number | undefined
   const vcsTask = new Map<VcsMode, Promise<void>>()
+  const vcsRun = new Map<VcsMode, number>()
 
-  const resetVcs = () => {
-    vcsTask.clear()
-    setVcs({
-      diff: { git: [], branch: [] },
-      ready: { git: false, branch: false },
+  const bumpVcs = (mode: VcsMode) => {
+    const next = (vcsRun.get(mode) ?? 0) + 1
+    vcsRun.set(mode, next)
+    return next
+  }
+
+  const resetVcs = (mode?: VcsMode) => {
+    const list = mode ? [mode] : (["git", "branch"] as const)
+    list.forEach((item) => {
+      bumpVcs(item)
+      vcsTask.delete(item)
+      setVcs("diff", item, [])
+      setVcs("ready", item, false)
     })
   }
 
   const loadVcs = (mode: VcsMode, force = false) => {
     if (sync.project?.vcs !== "git") return Promise.resolve()
-    if (vcs.ready[mode] && !force) return Promise.resolve()
+    if (!force && vcs.ready[mode]) return Promise.resolve()
+
+    if (force) {
+      if (vcsTask.has(mode)) bumpVcs(mode)
+      vcsTask.delete(mode)
+      setVcs("ready", mode, false)
+    }
+
     const current = vcsTask.get(mode)
     if (current) return current
+
+    const run = bumpVcs(mode)
 
     const task = sdk.client.vcs
       .diff({ mode })
       .then((result) => {
+        if (vcsRun.get(mode) !== run) return
         setVcs("diff", mode, result.data ?? [])
         setVcs("ready", mode, true)
       })
       .catch((error) => {
+        if (vcsRun.get(mode) !== run) return
         console.debug("[session-review] failed to load vcs diff", { mode, error })
         setVcs("diff", mode, [])
         setVcs("ready", mode, true)
       })
       .finally(() => {
-        vcsTask.delete(mode)
+        if (vcsTask.get(mode) === task) vcsTask.delete(mode)
       })
 
     vcsTask.set(mode, task)
     return task
+  }
+
+  const refreshVcs = () => {
+    resetVcs()
+    const mode = untrack(vcsMode)
+    if (!mode) return
+    if (!untrack(wantsReview)) return
+    void loadVcs(mode, true)
   }
 
   createComputed((prev) => {
@@ -843,6 +871,29 @@ export default function Page() {
       { defer: true },
     ),
   )
+
+  createEffect(
+    on(
+      () => [sync.data.vcs?.branch, sync.data.vcs?.default_branch] as const,
+      (next, prev) => {
+        if (prev === undefined || same(next, prev)) return
+        refreshVcs()
+      },
+      { defer: true },
+    ),
+  )
+
+  const stopVcs = sdk.event.listen((evt) => {
+    if (evt.details.type !== "file.watcher.updated") return
+    const props =
+      typeof evt.details.properties === "object" && evt.details.properties
+        ? (evt.details.properties as Record<string, unknown>)
+        : undefined
+    const file = typeof props?.file === "string" ? props.file : undefined
+    if (!file || file.startsWith(".git/")) return
+    refreshVcs()
+  })
+  onCleanup(stopVcs)
 
   createEffect(
     on(

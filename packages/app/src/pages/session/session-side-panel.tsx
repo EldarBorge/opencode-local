@@ -124,7 +124,7 @@ export function SessionSidePanel(props: {
     pathFromTab: file.pathFromTab,
     normalizeTab,
     review: reviewTab,
-    hasReview: props.hasReview,
+    hasReview: props.canReview,
   })
   const contextOpen = tabState.contextOpen
   const openedTabs = tabState.openedTabs

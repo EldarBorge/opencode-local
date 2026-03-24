@@ -153,6 +153,7 @@ export function SessionHeader() {
   })
   const hotkey = createMemo(() => command.keybind("file.open"))
   const os = createMemo(() => detectOS(platform))
+  const search = createMemo(() => platform.platform !== "desktop" || settings.general.showSearch())
   const tree = createMemo(() => platform.platform !== "desktop" || settings.general.showFileTree())
   const term = createMemo(() => platform.platform !== "desktop" || settings.general.showTerminal())
   const status = createMemo(() => platform.platform !== "desktop" || settings.general.showStatus())
@@ -272,35 +273,37 @@ export function SessionHeader() {
 
   return (
     <>
-      <Show when={centerMount()}>
-        {(mount) => (
-          <Portal mount={mount()}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="small"
-              class="hidden md:flex w-[240px] max-w-full min-w-0 items-center gap-2 justify-between rounded-md border border-border-weak-base bg-surface-panel shadow-none cursor-default"
-              onClick={() => command.trigger("file.open")}
-              aria-label={language.t("session.header.searchFiles")}
-            >
-              <div class="flex min-w-0 flex-1 items-center overflow-visible">
-                <span class="flex-1 min-w-0 text-12-regular text-text-weak truncate text-left">
-                  {language.t("session.header.search.placeholder", {
-                    project: name(),
-                  })}
-                </span>
-              </div>
+      <Show when={search()}>
+        <Show when={centerMount()}>
+          {(mount) => (
+            <Portal mount={mount()}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="small"
+                class="hidden md:flex w-[240px] max-w-full min-w-0 items-center gap-2 justify-between rounded-md border border-border-weak-base bg-surface-panel shadow-none cursor-default"
+                onClick={() => command.trigger("file.open")}
+                aria-label={language.t("session.header.searchFiles")}
+              >
+                <div class="flex min-w-0 flex-1 items-center overflow-visible">
+                  <span class="flex-1 min-w-0 text-12-regular text-text-weak truncate text-left">
+                    {language.t("session.header.search.placeholder", {
+                      project: name(),
+                    })}
+                  </span>
+                </div>
 
-              <Show when={hotkey()}>
-                {(keybind) => (
-                  <Keybind class="shrink-0 !border-0 !bg-transparent !shadow-none px-0 text-text-weaker">
-                    {keybind()}
-                  </Keybind>
-                )}
-              </Show>
-            </Button>
-          </Portal>
-        )}
+                <Show when={hotkey()}>
+                  {(keybind) => (
+                    <Keybind class="shrink-0 !border-0 !bg-transparent !shadow-none px-0 text-text-weaker">
+                      {keybind()}
+                    </Keybind>
+                  )}
+                </Show>
+              </Button>
+            </Portal>
+          )}
+        </Show>
       </Show>
       <Show when={rightMount()}>
         {(mount) => (

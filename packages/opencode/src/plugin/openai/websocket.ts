@@ -1,4 +1,7 @@
 import WebSocket from "ws"
+import { Log } from "@/util/log"
+
+const log = Log.create({ service: "plugin.openai.websocket" })
 
 export interface CreateWebSocketFetchOptions {
   /**
@@ -41,20 +44,30 @@ export function createWebSocketFetch(options?: CreateWebSocketFetchOptions) {
 
   function getConnection(url: string, headers: Record<string, string>): Promise<WebSocket> {
     if (ws?.readyState === WebSocket.OPEN && !busy) {
+      log.debug("reusing websocket", { url })
       return Promise.resolve(ws)
     }
     if (connecting && !busy) return connecting
 
     connecting = new Promise<WebSocket>((resolve, reject) => {
+      log.debug("connecting websocket", {
+        url,
+        headers: Object.keys(headers).sort().join(","),
+      })
       const socket = new WebSocket(url, { headers })
 
       socket.on("open", () => {
         ws = socket
         connecting = null
+        log.debug("websocket connected", { url })
         resolve(socket)
       })
 
       socket.on("error", (err) => {
+        log.debug("websocket connect error", {
+          url,
+          error: err.message,
+        })
         if (connecting) {
           connecting = null
           reject(err)
@@ -62,6 +75,7 @@ export function createWebSocketFetch(options?: CreateWebSocketFetchOptions) {
       })
 
       socket.on("close", () => {
+        log.debug("websocket closed", { url })
         if (ws === socket) ws = null
       })
     })
@@ -90,6 +104,12 @@ export function createWebSocketFetch(options?: CreateWebSocketFetchOptions) {
     const wsUrl = getWebSocketURL(url, options?.url)
     const headers = getWebSocketHeaders(init.headers)
 
+    log.debug("intercepting responses request", {
+      url,
+      wsUrl,
+      stream: true,
+    })
+
     const connection = await getConnection(wsUrl, headers)
     busy = true
 
@@ -107,6 +127,7 @@ export function createWebSocketFetch(options?: CreateWebSocketFetchOptions) {
 
         function onMessage(data: WebSocket.RawData) {
           const text = data.toString()
+          log.debug("websocket event", { event: pretty(text), url: wsUrl })
           controller.enqueue(encoder.encode(`data: ${text}\n\n`))
 
           try {
@@ -122,11 +143,13 @@ export function createWebSocketFetch(options?: CreateWebSocketFetchOptions) {
         }
 
         function onError(err: Error) {
+          log.debug("websocket stream error", { url: wsUrl, error: err.message })
           cleanup()
           controller.error(err)
         }
 
         function onClose() {
+          log.debug("websocket stream close", { url: wsUrl })
           cleanup()
           try {
             controller.close()
@@ -214,4 +237,12 @@ function getWebSocketURL(url: string, fallback?: string) {
   const parsed = new URL(url)
   parsed.protocol = parsed.protocol === "https:" ? "wss:" : "ws:"
   return parsed.toString()
+}
+
+function pretty(text: string) {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2)
+  } catch {
+    return text
+  }
 }

@@ -35,26 +35,18 @@ export interface CreateWebSocketFetchOptions {
  * ```
  */
 export function createWebSocketFetch(options?: CreateWebSocketFetchOptions) {
-  const wsUrl = options?.url ?? "wss://api.openai.com/v1/responses"
-
   let ws: WebSocket | null = null
   let connecting: Promise<WebSocket> | null = null
   let busy = false
 
-  function getConnection(authorization: string): Promise<WebSocket> {
+  function getConnection(url: string, headers: Record<string, string>): Promise<WebSocket> {
     if (ws?.readyState === WebSocket.OPEN && !busy) {
       return Promise.resolve(ws)
     }
-
     if (connecting && !busy) return connecting
 
     connecting = new Promise<WebSocket>((resolve, reject) => {
-      const socket = new WebSocket(wsUrl, {
-        headers: {
-          Authorization: authorization,
-          "OpenAI-Beta": "responses_websockets=2026-02-06",
-        },
-      })
+      const socket = new WebSocket(url, { headers })
 
       socket.on("open", () => {
         ws = socket
@@ -95,10 +87,10 @@ export function createWebSocketFetch(options?: CreateWebSocketFetchOptions) {
       return globalThis.fetch(input, init)
     }
 
-    const headers = normalizeHeaders(init.headers)
-    const authorization = headers["authorization"] ?? ""
+    const wsUrl = getWebSocketURL(url, options?.url)
+    const headers = getWebSocketHeaders(init.headers)
 
-    const connection = await getConnection(authorization)
+    const connection = await getConnection(wsUrl, headers)
     busy = true
 
     const { stream: _, ...requestBody } = body
@@ -207,4 +199,19 @@ function normalizeHeaders(headers: HeadersInit | undefined): Record<string, stri
   }
 
   return result
+}
+
+function getWebSocketHeaders(headers: HeadersInit | undefined) {
+  const result = normalizeHeaders(headers)
+  delete result["content-length"]
+  result["openai-beta"] ??= "responses_websockets=2026-02-06"
+  return result
+}
+
+function getWebSocketURL(url: string, fallback?: string) {
+  if (fallback) return fallback
+
+  const parsed = new URL(url)
+  parsed.protocol = parsed.protocol === "https:" ? "wss:" : "ws:"
+  return parsed.toString()
 }

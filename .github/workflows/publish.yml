@@ -160,45 +160,8 @@ jobs:
           name: opencode-cli-darwin
           path: packages/opencode/dist
 
-  build-cli-merge:
-    needs:
-      - version
-      - build-cli-linux-win
-      - build-cli-darwin
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    if: github.repository == 'anomalyco/opencode'
-    steps:
-      - uses: actions/checkout@v3
-
-      - uses: ./.github/actions/setup-bun
-
-      - name: Setup git committer
-        id: committer
-        uses: ./.github/actions/setup-git-committer
-        with:
-          opencode-app-id: ${{ vars.OPENCODE_APP_ID }}
-          opencode-app-secret: ${{ secrets.OPENCODE_APP_SECRET }}
-
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: opencode-cli-*
-          path: packages/opencode/dist
-          merge-multiple: true
-
-      - name: Upload CLI release assets
-        if: needs.version.outputs.release
-        run: gh release upload v${{ needs.version.outputs.version }} ./packages/opencode/dist/*.zip ./packages/opencode/dist/*.tar.gz --clobber --repo ${{ needs.version.outputs.repo }}
-        env:
-          GH_TOKEN: ${{ steps.committer.outputs.token }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: opencode-cli
-          path: packages/opencode/dist
-
   build-tauri:
     needs:
-      - build-cli-merge
       - version
     continue-on-error: false
     strategy:
@@ -342,7 +305,6 @@ jobs:
 
   build-electron:
     needs:
-      - build-cli-merge
       - version
     continue-on-error: false
     strategy:
@@ -466,7 +428,8 @@ jobs:
   publish:
     needs:
       - version
-      - build-cli-merge
+      - build-cli-darwin
+      - build-cli-linux-win
       - build-tauri
       - build-electron
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -502,8 +465,9 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: opencode-cli
+          pattern: opencode-cli-*
           path: packages/opencode/dist
+          merge-multiple: true
 
       - uses: actions/download-artifact@v4
         if: needs.version.outputs.release

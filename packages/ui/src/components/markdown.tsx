@@ -78,21 +78,25 @@ function incomplete(raw: string) {
   return !new RegExp(`^[\\t ]{0,3}${char}{${size},}[\\t ]*$`).test(last)
 }
 
-function renderLiveCode(token: Tokens.Code) {
-  const cls = token.lang ? ` class="language-${escape(token.lang)}"` : ""
-  return `<pre><code${cls}>${escape(token.text)}</code></pre>`
-}
-
 function blocks(markdown: string, streaming: boolean) {
   if (!streaming || references(markdown)) return [{ raw: markdown, mode: "full" }] satisfies Block[]
-  const tokens = marked.lexer(markdown).filter((token) => token.type !== "space")
-  return tokens.map((token, index) => {
-    if (index !== tokens.length - 1) return { raw: token.raw, mode: "full" }
-    if (token.type !== "code") return { raw: token.raw, mode: "full" }
-    const code = token as Tokens.Code
-    if (!incomplete(code.raw)) return { raw: code.raw, mode: "full" }
-    return { raw: renderLiveCode(code), mode: "live" }
-  })
+  const tokens = marked.lexer(markdown)
+  const last = tokens.findLast((token) => token.type !== "space")
+  if (!last || last.type !== "code") return [{ raw: markdown, mode: "full" }] satisfies Block[]
+  const code = last as Tokens.Code
+  if (!incomplete(code.raw)) return [{ raw: markdown, mode: "full" }] satisfies Block[]
+  const head = tokens
+    .slice(
+      0,
+      tokens.findLastIndex((token) => token.type !== "space"),
+    )
+    .map((token) => token.raw)
+    .join("")
+  if (!head) return [{ raw: code.raw, mode: "live" }] satisfies Block[]
+  return [
+    { raw: head, mode: "full" },
+    { raw: code.raw, mode: "live" },
+  ] satisfies Block[]
 }
 
 type CopyLabels = {
@@ -322,7 +326,7 @@ export function Markdown(
           }
         }
 
-        const next = block.mode === "live" ? block.raw : await Promise.resolve(marked.parse(block.raw))
+        const next = await Promise.resolve(marked.parse(block.raw))
         const safe = sanitize(next)
         if (key && hash) touch(key, { hash, html: safe })
         return safe

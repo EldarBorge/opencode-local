@@ -2,6 +2,7 @@ import { useMarked } from "../context/marked"
 import { useI18n } from "../context/i18n"
 import DOMPurify from "dompurify"
 import morphdom from "morphdom"
+import { marked, type Tokens } from "marked"
 import { checksum } from "@opencode-ai/util/encode"
 import { ComponentProps, createEffect, createSignal, onCleanup, splitProps } from "solid-js"
 import { isServer } from "solid-js/web"
@@ -55,6 +56,43 @@ function escape(text: string) {
 
 function fallback(markdown: string) {
   return escape(markdown).replace(/\r\n?/g, "\n").replace(/\n/g, "<br>")
+}
+
+type Block = {
+  raw: string
+  mode: "full" | "live"
+}
+
+function references(markdown: string) {
+  return /^\[[^\]]+\]:\s+\S+/m.test(markdown) || /^\[\^[^\]]+\]:\s+/m.test(markdown)
+}
+
+function incomplete(raw: string) {
+  const open = raw.match(/^[ \t]{0,3}(`{3,}|~{3,})/)
+  if (!open) return false
+  const mark = open[1]
+  if (!mark) return false
+  const char = mark[0]
+  const size = mark.length
+  const last = raw.trimEnd().split("\n").at(-1)?.trim() ?? ""
+  return !new RegExp(`^[\\t ]{0,3}${char}{${size},}[\\t ]*$`).test(last)
+}
+
+function renderLiveCode(token: Tokens.Code) {
+  const cls = token.lang ? ` class="language-${escape(token.lang)}"` : ""
+  return `<pre><code${cls}>${escape(token.text)}</code></pre>`
+}
+
+function blocks(markdown: string, streaming: boolean) {
+  if (!streaming || references(markdown)) return [{ raw: markdown, mode: "full" }] satisfies Block[]
+  const tokens = marked.lexer(markdown).filter((token) => token.type !== "space")
+  return tokens.map((token, index) => {
+    if (index !== tokens.length - 1) return { raw: token.raw, mode: "full" }
+    if (token.type !== "code") return { raw: token.raw, mode: "full" }
+    const code = token as Tokens.Code
+    if (!incomplete(code.raw)) return { raw: code.raw, mode: "full" }
+    return { raw: renderLiveCode(code), mode: "live" }
+  })
 }
 
 type CopyLabels = {
@@ -180,10 +218,11 @@ function decorate(root: HTMLDivElement, labels: CopyLabels) {
   markCodeLinks(root)
 }
 
-function setupCodeCopy(root: HTMLDivElement, labels: CopyLabels) {
+function setupCodeCopy(root: HTMLDivElement, getLabels: () => CopyLabels) {
   const timeouts = new Map<HTMLButtonElement, ReturnType<typeof setTimeout>>()
 
   const updateLabel = (button: HTMLButtonElement) => {
+    const labels = getLabels()
     const copied = button.getAttribute("data-copied") === "true"
     setCopyState(button, labels, copied)
   }
@@ -200,6 +239,7 @@ function setupCodeCopy(root: HTMLDivElement, labels: CopyLabels) {
     const clipboard = navigator?.clipboard
     if (!clipboard) return
     await clipboard.writeText(content)
+    const labels = getLabels()
     setCopyState(button, labels, true)
     const existing = timeouts.get(button)
     if (existing) clearTimeout(existing)
@@ -207,7 +247,7 @@ function setupCodeCopy(root: HTMLDivElement, labels: CopyLabels) {
     timeouts.set(button, timeout)
   }
 
-  decorate(root, labels)
+  decorate(root, getLabels())
 
   const buttons = Array.from(root.querySelectorAll('[data-slot="markdown-copy-button"]'))
   for (const button of buttons) {
@@ -239,11 +279,12 @@ export function Markdown(
   props: ComponentProps<"div"> & {
     text: string
     cacheKey?: string
+    streaming?: boolean
     class?: string
     classList?: Record<string, boolean>
   },
 ) {
-  const [local, others] = splitProps(props, ["text", "cacheKey", "class", "classList"])
+  const [local, others] = splitProps(props, ["text", "cacheKey", "streaming", "class", "classList"])
   const marked = useMarked()
   const i18n = useI18n()
   const [root, setRoot] = createSignal<HTMLDivElement>()
@@ -251,7 +292,6 @@ export function Markdown(
   let run = 0
   let dead = false
 
-  let copySetupTimer: ReturnType<typeof setTimeout> | undefined
   let copyCleanup: (() => void) | undefined
 
   createEffect(() => {
@@ -267,24 +307,30 @@ export function Markdown(
       return
     }
 
-    const hash = checksum(markdown)
-    const key = local.cacheKey ?? hash
+    const base = local.cacheKey ?? checksum(markdown)
 
-    if (key && hash) {
-      const cached = cache.get(key)
-      if (cached && cached.hash === hash) {
-        touch(key, cached)
-        setHtml(cached.html)
-        return
-      }
-    }
+    void Promise.all(
+      blocks(markdown, local.streaming ?? false).map(async (block, index) => {
+        const hash = checksum(block.raw)
+        const key = base ? `${base}:${index}:${block.mode}` : hash
 
-    void Promise.resolve(marked.parse(markdown))
-      .then((next) => {
-        if (dead || seq !== run) return
+        if (key && hash) {
+          const cached = cache.get(key)
+          if (cached && cached.hash === hash) {
+            touch(key, cached)
+            return cached.html
+          }
+        }
+
+        const next = block.mode === "live" ? block.raw : await Promise.resolve(marked.parse(block.raw))
         const safe = sanitize(next)
         if (key && hash) touch(key, { hash, html: safe })
-        setHtml(safe)
+        return safe
+      }),
+    )
+      .then((list) => {
+        if (dead || seq !== run) return
+        setHtml(list.join(""))
       })
       .catch(() => {
         if (dead || seq !== run) return
@@ -303,35 +349,41 @@ export function Markdown(
       return
     }
 
-    const temp = document.createElement("div")
-    temp.innerHTML = content
-    decorate(temp, {
+    const labels = {
       copy: i18n.t("ui.message.copy"),
       copied: i18n.t("ui.message.copied"),
-    })
+    }
+    const temp = document.createElement("div")
+    temp.innerHTML = content
+    decorate(temp, labels)
 
     morphdom(container, temp, {
       childrenOnly: true,
       onBeforeElUpdated: (fromEl, toEl) => {
+        if (
+          fromEl instanceof HTMLButtonElement &&
+          toEl instanceof HTMLButtonElement &&
+          fromEl.getAttribute("data-slot") === "markdown-copy-button" &&
+          toEl.getAttribute("data-slot") === "markdown-copy-button" &&
+          fromEl.getAttribute("data-copied") === "true"
+        ) {
+          setCopyState(toEl, labels, true)
+        }
         if (fromEl.isEqualNode(toEl)) return false
         return true
       },
     })
 
-    if (copySetupTimer) clearTimeout(copySetupTimer)
-    copySetupTimer = setTimeout(() => {
-      if (copyCleanup) copyCleanup()
-      copyCleanup = setupCodeCopy(container, {
+    if (!copyCleanup)
+      copyCleanup = setupCodeCopy(container, () => ({
         copy: i18n.t("ui.message.copy"),
         copied: i18n.t("ui.message.copied"),
-      })
-    }, 150)
+      }))
   })
 
   onCleanup(() => {
     dead = true
     run += 1
-    if (copySetupTimer) clearTimeout(copySetupTimer)
     if (copyCleanup) copyCleanup()
   })
 

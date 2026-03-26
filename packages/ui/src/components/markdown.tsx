@@ -3,7 +3,7 @@ import { useI18n } from "../context/i18n"
 import DOMPurify from "dompurify"
 import morphdom from "morphdom"
 import { checksum } from "@opencode-ai/util/encode"
-import { ComponentProps, createEffect, createResource, createSignal, onCleanup, splitProps } from "solid-js"
+import { ComponentProps, createEffect, createSignal, onCleanup, splitProps } from "solid-js"
 import { isServer } from "solid-js/web"
 
 type Entry = {
@@ -247,32 +247,50 @@ export function Markdown(
   const marked = useMarked()
   const i18n = useI18n()
   const [root, setRoot] = createSignal<HTMLDivElement>()
-  const [html] = createResource(
-    () => local.text,
-    async (markdown) => {
-      if (isServer) return fallback(markdown)
-
-      const hash = checksum(markdown)
-      const key = local.cacheKey ?? hash
-
-      if (key && hash) {
-        const cached = cache.get(key)
-        if (cached && cached.hash === hash) {
-          touch(key, cached)
-          return cached.html
-        }
-      }
-
-      const next = await marked.parse(markdown)
-      const safe = sanitize(next)
-      if (key && hash) touch(key, { hash, html: safe })
-      return safe
-    },
-    { initialValue: isServer ? fallback(local.text) : "" },
-  )
+  const [html, setHtml] = createSignal(fallback(local.text))
+  let run = 0
+  let dead = false
 
   let copySetupTimer: ReturnType<typeof setTimeout> | undefined
   let copyCleanup: (() => void) | undefined
+
+  createEffect(() => {
+    const markdown = local.text
+    if (isServer) {
+      setHtml(fallback(markdown))
+      return
+    }
+
+    const seq = ++run
+    if (!markdown) {
+      setHtml("")
+      return
+    }
+
+    const hash = checksum(markdown)
+    const key = local.cacheKey ?? hash
+
+    if (key && hash) {
+      const cached = cache.get(key)
+      if (cached && cached.hash === hash) {
+        touch(key, cached)
+        setHtml(cached.html)
+        return
+      }
+    }
+
+    void Promise.resolve(marked.parse(markdown))
+      .then((next) => {
+        if (dead || seq !== run) return
+        const safe = sanitize(next)
+        if (key && hash) touch(key, { hash, html: safe })
+        setHtml(safe)
+      })
+      .catch(() => {
+        if (dead || seq !== run) return
+        setHtml(fallback(markdown))
+      })
+  })
 
   createEffect(() => {
     const container = root()
@@ -311,6 +329,8 @@ export function Markdown(
   })
 
   onCleanup(() => {
+    dead = true
+    run += 1
     if (copySetupTimer) clearTimeout(copySetupTimer)
     if (copyCleanup) copyCleanup()
   })

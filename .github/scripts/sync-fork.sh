@@ -56,7 +56,7 @@ build_branch() {
       git cherry-pick "$commit"
     done
     "$ROOT/.github/scripts/verify-local-web.sh"
-    git push --force-with-lease origin "HEAD:$target_branch"
+    git push --force origin "HEAD:$target_branch"
     git rev-parse HEAD >"$TMPDIR/${target_branch}.sha"
   )
 }

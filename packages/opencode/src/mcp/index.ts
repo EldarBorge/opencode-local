@@ -200,192 +200,11 @@ export namespace MCP {
     )
   }
 
-  type Transport = StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport
-
-  /**
-   * Connect a client via the given transport with resource safety:
-   * on failure the transport is closed; on success the caller owns it.
-   */
-  const connectTransport = (transport: Transport, timeout: number) =>
-    Effect.acquireUseRelease(
-      Effect.succeed(transport),
-      (t) =>
-        Effect.tryPromise({
-          try: () => {
-            const client = new Client({ name: "opencode", version: Installation.VERSION })
-            return withTimeout(client.connect(t), timeout).then(() => client)
-          },
-          catch: (e) => (e instanceof Error ? e : new Error(String(e))),
-        }),
-      (t, exit) =>
-        Exit.isFailure(exit)
-          ? Effect.tryPromise(() => t.close()).pipe(Effect.ignore)
-          : Effect.void,
-    )
-
-  /** Fire-and-forget Bus.publish wrapped in Effect */
-  const busPublish = <D extends BusEvent.Definition>(def: D, properties: z.output<D["properties"]>) =>
-    Effect.tryPromise(() => Bus.publish(def, properties)).pipe(Effect.ignore)
-
   interface CreateResult {
     mcpClient?: MCPClient
     status: Status
     defs?: MCPToolDef[]
   }
-
-  const DISABLED_RESULT: CreateResult = { status: { status: "disabled" } }
-
-  const connectRemote = Effect.fn("MCP.connectRemote")(function* (key: string, mcp: Config.Mcp & { type: "remote" }) {
-    const oauthDisabled = mcp.oauth === false
-    const oauthConfig = typeof mcp.oauth === "object" ? mcp.oauth : undefined
-    let authProvider: McpOAuthProvider | undefined
-
-    if (!oauthDisabled) {
-      authProvider = new McpOAuthProvider(
-        key,
-        mcp.url,
-        {
-          clientId: oauthConfig?.clientId,
-          clientSecret: oauthConfig?.clientSecret,
-          scope: oauthConfig?.scope,
-        },
-        {
-          onRedirect: async (url) => {
-            log.info("oauth redirect requested", { key, url: url.toString() })
-          },
-        },
-      )
-    }
-
-    const transports: Array<{ name: string; transport: TransportWithAuth }> = [
-      {
-        name: "StreamableHTTP",
-        transport: new StreamableHTTPClientTransport(new URL(mcp.url), {
-          authProvider,
-          requestInit: mcp.headers ? { headers: mcp.headers } : undefined,
-        }),
-      },
-      {
-        name: "SSE",
-        transport: new SSEClientTransport(new URL(mcp.url), {
-          authProvider,
-          requestInit: mcp.headers ? { headers: mcp.headers } : undefined,
-        }),
-      },
-    ]
-
-    const connectTimeout = mcp.timeout ?? DEFAULT_TIMEOUT
-    let lastStatus: Status | undefined
-
-    for (const { name, transport } of transports) {
-      const result = yield* connectTransport(transport, connectTimeout).pipe(
-        Effect.map((client) => ({ client, transportName: name })),
-        Effect.catch((error) => {
-          const lastError = error instanceof Error ? error : new Error(String(error))
-          const isAuthError =
-            error instanceof UnauthorizedError || (authProvider && lastError.message.includes("OAuth"))
-
-          if (isAuthError) {
-            log.info("mcp server requires authentication", { key, transport: name })
-
-            if (lastError.message.includes("registration") || lastError.message.includes("client_id")) {
-              lastStatus = {
-                status: "needs_client_registration" as const,
-                error: "Server does not support dynamic client registration. Please provide clientId in config.",
-              }
-              return busPublish(TuiEvent.ToastShow, {
-                title: "MCP Authentication Required",
-                message: `Server "${key}" requires a pre-registered client ID. Add clientId to your config.`,
-                variant: "warning",
-                duration: 8000,
-              }).pipe(Effect.as(undefined))
-            } else {
-              pendingOAuthTransports.set(key, transport)
-              lastStatus = { status: "needs_auth" as const }
-              return busPublish(TuiEvent.ToastShow, {
-                title: "MCP Authentication Required",
-                message: `Server "${key}" requires authentication. Run: opencode mcp auth ${key}`,
-                variant: "warning",
-                duration: 8000,
-              }).pipe(Effect.as(undefined))
-            }
-          }
-
-          log.debug("transport connection failed", {
-            key,
-            transport: name,
-            url: mcp.url,
-            error: lastError.message,
-          })
-          lastStatus = { status: "failed" as const, error: lastError.message }
-          return Effect.succeed(undefined)
-        }),
-      )
-      if (result) {
-        log.info("connected", { key, transport: result.transportName })
-        return { client: result.client as MCPClient | undefined, status: { status: "connected" } as Status }
-      }
-      // If this was an auth error, stop trying other transports
-      if (lastStatus?.status === "needs_auth" || lastStatus?.status === "needs_client_registration") break
-    }
-
-    return { client: undefined as MCPClient | undefined, status: (lastStatus ?? { status: "failed", error: "Unknown error" }) as Status }
-  })
-
-  const connectLocal = Effect.fn("MCP.connectLocal")(function* (key: string, mcp: Config.Mcp & { type: "local" }) {
-    const [cmd, ...args] = mcp.command
-    const cwd = Instance.directory
-    const transport = new StdioClientTransport({
-      stderr: "pipe",
-      command: cmd,
-      args,
-      cwd,
-      env: {
-        ...process.env,
-        ...(cmd === "opencode" ? { BUN_BE_BUN: "1" } : {}),
-        ...mcp.environment,
-      },
-    })
-    transport.stderr?.on("data", (chunk: Buffer) => {
-      log.info(`mcp stderr: ${chunk.toString()}`, { key })
-    })
-
-    const connectTimeout = mcp.timeout ?? DEFAULT_TIMEOUT
-    return yield* connectTransport(transport, connectTimeout).pipe(
-      Effect.map((client): { client: MCPClient | undefined; status: Status } => ({ client, status: { status: "connected" } })),
-      Effect.catch((error): Effect.Effect<{ client: MCPClient | undefined; status: Status }> => {
-        const msg = error instanceof Error ? error.message : String(error)
-        log.error("local mcp startup failed", { key, command: mcp.command, cwd, error: msg })
-        return Effect.succeed({ client: undefined, status: { status: "failed", error: msg } })
-      }),
-    )
-  })
-
-  const create = Effect.fn("MCP.create")(function* (key: string, mcp: Config.Mcp) {
-    if (mcp.enabled === false) {
-      log.info("mcp server disabled", { key })
-      return DISABLED_RESULT
-    }
-
-    log.info("found", { key, type: mcp.type })
-
-    const { client: mcpClient, status } = mcp.type === "remote"
-      ? yield* connectRemote(key, mcp as Config.Mcp & { type: "remote" })
-      : yield* connectLocal(key, mcp as Config.Mcp & { type: "local" })
-
-    if (!mcpClient) {
-      return { status } satisfies CreateResult
-    }
-
-    const listed = yield* defs(key, mcpClient, mcp.timeout)
-    if (!listed) {
-      yield* Effect.tryPromise(() => mcpClient.close()).pipe(Effect.ignore)
-      return { status: { status: "failed", error: "Failed to get tools" } } satisfies CreateResult
-    }
-
-    log.info("create() successfully created client", { key, toolCount: listed.length })
-    return { mcpClient, status, defs: listed } satisfies CreateResult
-  })
 
   // --- Effect Service ---
 
@@ -429,6 +248,184 @@ export namespace MCP {
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
       const auth = yield* McpAuth.Service
+      const bus = yield* Bus.Service
+
+      type Transport = StdioClientTransport | StreamableHTTPClientTransport | SSEClientTransport
+
+      /**
+       * Connect a client via the given transport with resource safety:
+       * on failure the transport is closed; on success the caller owns it.
+       */
+      const connectTransport = (transport: Transport, timeout: number) =>
+        Effect.acquireUseRelease(
+          Effect.succeed(transport),
+          (t) =>
+            Effect.tryPromise({
+              try: () => {
+                const client = new Client({ name: "opencode", version: Installation.VERSION })
+                return withTimeout(client.connect(t), timeout).then(() => client)
+              },
+              catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+            }),
+          (t, exit) =>
+            Exit.isFailure(exit)
+              ? Effect.tryPromise(() => t.close()).pipe(Effect.ignore)
+              : Effect.void,
+        )
+
+      const DISABLED_RESULT: CreateResult = { status: { status: "disabled" } }
+
+      const connectRemote = Effect.fn("MCP.connectRemote")(function* (key: string, mcp: Config.Mcp & { type: "remote" }) {
+        const oauthDisabled = mcp.oauth === false
+        const oauthConfig = typeof mcp.oauth === "object" ? mcp.oauth : undefined
+        let authProvider: McpOAuthProvider | undefined
+
+        if (!oauthDisabled) {
+          authProvider = new McpOAuthProvider(
+            key,
+            mcp.url,
+            {
+              clientId: oauthConfig?.clientId,
+              clientSecret: oauthConfig?.clientSecret,
+              scope: oauthConfig?.scope,
+            },
+            {
+              onRedirect: async (url) => {
+                log.info("oauth redirect requested", { key, url: url.toString() })
+              },
+            },
+          )
+        }
+
+        const transports: Array<{ name: string; transport: TransportWithAuth }> = [
+          {
+            name: "StreamableHTTP",
+            transport: new StreamableHTTPClientTransport(new URL(mcp.url), {
+              authProvider,
+              requestInit: mcp.headers ? { headers: mcp.headers } : undefined,
+            }),
+          },
+          {
+            name: "SSE",
+            transport: new SSEClientTransport(new URL(mcp.url), {
+              authProvider,
+              requestInit: mcp.headers ? { headers: mcp.headers } : undefined,
+            }),
+          },
+        ]
+
+        const connectTimeout = mcp.timeout ?? DEFAULT_TIMEOUT
+        let lastStatus: Status | undefined
+
+        for (const { name, transport } of transports) {
+          const result = yield* connectTransport(transport, connectTimeout).pipe(
+            Effect.map((client) => ({ client, transportName: name })),
+            Effect.catch((error) => {
+              const lastError = error instanceof Error ? error : new Error(String(error))
+              const isAuthError =
+                error instanceof UnauthorizedError || (authProvider && lastError.message.includes("OAuth"))
+
+              if (isAuthError) {
+                log.info("mcp server requires authentication", { key, transport: name })
+
+                if (lastError.message.includes("registration") || lastError.message.includes("client_id")) {
+                  lastStatus = {
+                    status: "needs_client_registration" as const,
+                    error: "Server does not support dynamic client registration. Please provide clientId in config.",
+                  }
+                  return bus.publish(TuiEvent.ToastShow, {
+                    title: "MCP Authentication Required",
+                    message: `Server "${key}" requires a pre-registered client ID. Add clientId to your config.`,
+                    variant: "warning",
+                    duration: 8000,
+                  }).pipe(Effect.ignore, Effect.as(undefined))
+                } else {
+                  pendingOAuthTransports.set(key, transport)
+                  lastStatus = { status: "needs_auth" as const }
+                  return bus.publish(TuiEvent.ToastShow, {
+                    title: "MCP Authentication Required",
+                    message: `Server "${key}" requires authentication. Run: opencode mcp auth ${key}`,
+                    variant: "warning",
+                    duration: 8000,
+                  }).pipe(Effect.ignore, Effect.as(undefined))
+                }
+              }
+
+              log.debug("transport connection failed", {
+                key,
+                transport: name,
+                url: mcp.url,
+                error: lastError.message,
+              })
+              lastStatus = { status: "failed" as const, error: lastError.message }
+              return Effect.succeed(undefined)
+            }),
+          )
+          if (result) {
+            log.info("connected", { key, transport: result.transportName })
+            return { client: result.client as MCPClient | undefined, status: { status: "connected" } as Status }
+          }
+          // If this was an auth error, stop trying other transports
+          if (lastStatus?.status === "needs_auth" || lastStatus?.status === "needs_client_registration") break
+        }
+
+        return { client: undefined as MCPClient | undefined, status: (lastStatus ?? { status: "failed", error: "Unknown error" }) as Status }
+      })
+
+      const connectLocal = Effect.fn("MCP.connectLocal")(function* (key: string, mcp: Config.Mcp & { type: "local" }) {
+        const [cmd, ...args] = mcp.command
+        const cwd = Instance.directory
+        const transport = new StdioClientTransport({
+          stderr: "pipe",
+          command: cmd,
+          args,
+          cwd,
+          env: {
+            ...process.env,
+            ...(cmd === "opencode" ? { BUN_BE_BUN: "1" } : {}),
+            ...mcp.environment,
+          },
+        })
+        transport.stderr?.on("data", (chunk: Buffer) => {
+          log.info(`mcp stderr: ${chunk.toString()}`, { key })
+        })
+
+        const connectTimeout = mcp.timeout ?? DEFAULT_TIMEOUT
+        return yield* connectTransport(transport, connectTimeout).pipe(
+          Effect.map((client): { client: MCPClient | undefined; status: Status } => ({ client, status: { status: "connected" } })),
+          Effect.catch((error): Effect.Effect<{ client: MCPClient | undefined; status: Status }> => {
+            const msg = error instanceof Error ? error.message : String(error)
+            log.error("local mcp startup failed", { key, command: mcp.command, cwd, error: msg })
+            return Effect.succeed({ client: undefined, status: { status: "failed", error: msg } })
+          }),
+        )
+      })
+
+      const create = Effect.fn("MCP.create")(function* (key: string, mcp: Config.Mcp) {
+        if (mcp.enabled === false) {
+          log.info("mcp server disabled", { key })
+          return DISABLED_RESULT
+        }
+
+        log.info("found", { key, type: mcp.type })
+
+        const { client: mcpClient, status } = mcp.type === "remote"
+          ? yield* connectRemote(key, mcp as Config.Mcp & { type: "remote" })
+          : yield* connectLocal(key, mcp as Config.Mcp & { type: "local" })
+
+        if (!mcpClient) {
+          return { status } satisfies CreateResult
+        }
+
+        const listed = yield* defs(key, mcpClient, mcp.timeout)
+        if (!listed) {
+          yield* Effect.tryPromise(() => mcpClient.close()).pipe(Effect.ignore)
+          return { status: { status: "failed", error: "Failed to get tools" } } satisfies CreateResult
+        }
+
+        log.info("create() successfully created client", { key, toolCount: listed.length })
+        return { mcpClient, status, defs: listed } satisfies CreateResult
+      })
 
       const descendants = Effect.fnUntraced(
         function* (pid: number) {
@@ -466,7 +463,7 @@ export namespace MCP {
           if (s.clients[name] !== client || s.status[name]?.status !== "connected") return
 
           s.defs[name] = listed
-          await Effect.runPromise(busPublish(ToolsChanged, { server: name }))
+          await Effect.runPromise(bus.publish(ToolsChanged, { server: name }).pipe(Effect.ignore))
         })
       }
 
@@ -781,7 +778,7 @@ export namespace MCP {
           ),
           Effect.catch(() => {
             log.warn("failed to open browser, user must open URL manually", { mcpName })
-            return busPublish(BrowserOpenFailed, { mcpName, url: authorizationUrl })
+            return bus.publish(BrowserOpenFailed, { mcpName, url: authorizationUrl }).pipe(Effect.ignore)
           }),
         )
 
@@ -874,6 +871,7 @@ export namespace MCP {
 
   const defaultLayer = layer.pipe(
     Layer.provide(McpAuth.layer),
+    Layer.provide(Bus.layer),
     Layer.provide(CrossSpawnSpawner.layer),
     Layer.provide(AppFileSystem.defaultLayer),
     Layer.provide(NodeFileSystem.layer),

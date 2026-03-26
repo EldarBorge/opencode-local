@@ -13,6 +13,7 @@ EDGE_BRANCH="${EDGE_BRANCH:-main}"
 STABLE_BRANCH="${STABLE_BRANCH:-stable}"
 RELEASE_SUFFIX="${RELEASE_SUFFIX:-local.1}"
 REPO_SLUG="${GITHUB_REPOSITORY:-}"
+MANAGE_REPO_METADATA="${MANAGE_REPO_METADATA:-0}"
 
 git remote get-url "$UPSTREAM_REMOTE" >/dev/null 2>&1 || git remote add "$UPSTREAM_REMOTE" "$UPSTREAM_URL"
 
@@ -85,18 +86,20 @@ Channels:
 This fork only carries the local-web patch set needed to avoid mandatory runtime dependency on hosted OpenCode web infrastructure.
 EOF
 
-  gh api --method PATCH "repos/${REPO_SLUG}" \
-    -f description='Local-web fork of OpenCode with no required runtime dependency on opencode.ai or models.dev for the core web UI.' \
-    -f homepage='https://github.com/anomalyco/opencode' \
-    -f default_branch="${EDGE_BRANCH}" >/dev/null
+  if [ "$MANAGE_REPO_METADATA" = "1" ]; then
+    gh api --method PATCH "repos/${REPO_SLUG}" \
+      -f description='Local-web fork of OpenCode with no required runtime dependency on opencode.ai or models.dev for the core web UI.' \
+      -f homepage='https://github.com/anomalyco/opencode' \
+      -f default_branch="${EDGE_BRANCH}" >/dev/null
 
-  gh api --method PUT "repos/${REPO_SLUG}/topics" \
-    -H 'Accept: application/vnd.github+json' \
-    -f names[]='opencode' \
-    -f names[]='fork' \
-    -f names[]='local-first' \
-    -f names[]='self-hosted' \
-    -f names[]='ai-agent' >/dev/null
+    gh api --method PUT "repos/${REPO_SLUG}/topics" \
+      -H 'Accept: application/vnd.github+json' \
+      -f names[]='opencode' \
+      -f names[]='fork' \
+      -f names[]='local-first' \
+      -f names[]='self-hosted' \
+      -f names[]='ai-agent' >/dev/null
+  fi
 
   if gh release view "$LOCAL_TAG" --repo "$REPO_SLUG" >/dev/null 2>&1; then
     gh release edit "$LOCAL_TAG" \

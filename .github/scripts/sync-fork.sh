@@ -53,7 +53,6 @@ build_branch() {
   git worktree add --detach "$worktree_dir" "$base_ref" >/dev/null
   (
     cd "$worktree_dir"
-    git checkout -B "$target_branch" >/dev/null
     for commit in "${PATCH_COMMITS[@]}"; do
       git cherry-pick "$commit"
     done

@@ -27,8 +27,7 @@ fi
 
 LATEST_TAG="$(
   git tag --list 'v[0-9]*' --sort=-v:refname \
-    | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-    | head -n 1
+    | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/ { print; exit }'
 )"
 if [ -z "$LATEST_TAG" ]; then
   echo "Failed to determine the latest upstream release tag" >&2

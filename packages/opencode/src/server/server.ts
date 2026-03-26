@@ -526,23 +526,28 @@ export namespace Server {
           } else {
             return c.json({ error: "Not Found" }, 404)
           }
-        } else {
-          const response = await proxy(`https://app.opencode.ai${path}`, {
-            ...c.req,
-            headers: {
-              ...c.req.raw.headers,
-              host: "app.opencode.ai",
-            },
-          })
-          const match = response.headers.get("content-type")?.includes("text/html")
-            ? (await response.clone().text()).match(
-                /<script\b(?![^>]*\bsrc\s*=)[^>]*\bid=(['"])oc-theme-preload-script\1[^>]*>([\s\S]*?)<\/script>/i,
-              )
-            : undefined
-          const hash = match ? createHash("sha256").update(match[2]).digest("base64") : ""
-          response.headers.set("Content-Security-Policy", csp(hash))
-          return response
         }
+
+        const requestUrl = new URL(c.req.url)
+        const appUrl = Flag.OPENCODE_WEB_APP_URL || "https://app.opencode.ai"
+        const target = new URL(`${requestUrl.pathname}${requestUrl.search}`, appUrl).toString()
+        const targetHost = new URL(appUrl).host
+
+        const response = await proxy(target, {
+          ...c.req,
+          headers: {
+            ...c.req.raw.headers,
+            host: targetHost,
+          },
+        })
+        const match = response.headers.get("content-type")?.includes("text/html")
+          ? (await response.clone().text()).match(
+              /<script\b(?![^>]*\bsrc\s*=)[^>]*\bid=(['"])oc-theme-preload-script\1[^>]*>([\s\S]*?)<\/script>/i,
+            )
+          : undefined
+        const hash = match ? createHash("sha256").update(match[2]).digest("base64") : ""
+        response.headers.set("Content-Security-Policy", csp(hash))
+        return response
       }) as unknown as Hono
   }
 

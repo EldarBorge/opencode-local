@@ -56,7 +56,9 @@ class MockStdioTransport {
     if (connectShouldHang) return new Promise<void>(() => {}) // never resolves
     if (connectShouldFail) throw new Error(connectError)
   }
-  async close() {}
+  async close() {
+    transportCloseCount++
+  }
 }
 
 class MockStreamableHTTP {

@@ -25,10 +25,13 @@ if [ "${#PATCH_COMMITS[@]}" -eq 0 ]; then
   exit 1
 fi
 
-LATEST_TAG="$(
-  git tag --list 'v[0-9]*' --sort=-v:refname \
-    | awk '/^v[0-9]+\.[0-9]+\.[0-9]+$/ { print; exit }'
-)"
+LATEST_TAG=""
+for tag in $(git tag --list 'v[0-9]*' --sort=-v:refname); do
+  if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    LATEST_TAG="$tag"
+    break
+  fi
+done
 if [ -z "$LATEST_TAG" ]; then
   echo "Failed to determine the latest upstream release tag" >&2
   exit 1

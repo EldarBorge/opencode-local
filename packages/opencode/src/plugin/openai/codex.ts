@@ -629,7 +629,13 @@ export async function CodexAuthPlugin(input: PluginInput): Promise<Hooks> {
       if (input.model.providerID !== "openai") return
       output.headers.originator = "opencode"
       output.headers["User-Agent"] = `opencode/${Installation.VERSION} (${os.platform()} ${os.release()}; ${os.arch()})`
-      output.headers.session_id = input.sessionID
+
+      // distinguish between title gen and actual chat session
+      if (!input.small) {
+        output.headers.session_id = input.sessionID
+      } else {
+        output.headers.session_id = input.sessionID + "_title"
+      }
     },
   }
 }

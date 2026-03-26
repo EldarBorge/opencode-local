@@ -4,7 +4,7 @@ import DOMPurify from "dompurify"
 import morphdom from "morphdom"
 import { marked, type Tokens } from "marked"
 import { checksum } from "@opencode-ai/util/encode"
-import { ComponentProps, createEffect, createSignal, onCleanup, splitProps } from "solid-js"
+import { ComponentProps, createEffect, createResource, createSignal, onCleanup, splitProps } from "solid-js"
 import { isServer } from "solid-js/web"
 
 type Entry = {
@@ -292,59 +292,47 @@ export function Markdown(
   const marked = useMarked()
   const i18n = useI18n()
   const [root, setRoot] = createSignal<HTMLDivElement>()
-  const [html, setHtml] = createSignal(fallback(local.text))
-  let run = 0
-  let dead = false
+  const [html] = createResource(
+    () => ({
+      text: local.text,
+      key: local.cacheKey,
+      streaming: local.streaming ?? false,
+    }),
+    async (src) => {
+      if (isServer) return fallback(src.text)
+      if (!src.text) return ""
+
+      const base = src.key ?? checksum(src.text)
+      return Promise.all(
+        blocks(src.text, src.streaming).map(async (block, index) => {
+          const hash = checksum(block.raw)
+          const key = base ? `${base}:${index}:${block.mode}` : hash
+
+          if (key && hash) {
+            const cached = cache.get(key)
+            if (cached && cached.hash === hash) {
+              touch(key, cached)
+              return cached.html
+            }
+          }
+
+          const next = await Promise.resolve(marked.parse(block.raw))
+          const safe = sanitize(next)
+          if (key && hash) touch(key, { hash, html: safe })
+          return safe
+        }),
+      )
+        .then((list) => list.join(""))
+        .catch(() => fallback(src.text))
+    },
+    { initialValue: fallback(local.text) },
+  )
 
   let copyCleanup: (() => void) | undefined
 
   createEffect(() => {
-    const markdown = local.text
-    if (isServer) {
-      setHtml(fallback(markdown))
-      return
-    }
-
-    const seq = ++run
-    if (!markdown) {
-      setHtml("")
-      return
-    }
-
-    const base = local.cacheKey ?? checksum(markdown)
-
-    void Promise.all(
-      blocks(markdown, local.streaming ?? false).map(async (block, index) => {
-        const hash = checksum(block.raw)
-        const key = base ? `${base}:${index}:${block.mode}` : hash
-
-        if (key && hash) {
-          const cached = cache.get(key)
-          if (cached && cached.hash === hash) {
-            touch(key, cached)
-            return cached.html
-          }
-        }
-
-        const next = await Promise.resolve(marked.parse(block.raw))
-        const safe = sanitize(next)
-        if (key && hash) touch(key, { hash, html: safe })
-        return safe
-      }),
-    )
-      .then((list) => {
-        if (dead || seq !== run) return
-        setHtml(list.join(""))
-      })
-      .catch(() => {
-        if (dead || seq !== run) return
-        setHtml(fallback(markdown))
-      })
-  })
-
-  createEffect(() => {
     const container = root()
-    const content = html()
+    const content = local.text ? (html.latest ?? html() ?? "") : ""
     if (!container) return
     if (isServer) return
 
@@ -386,8 +374,6 @@ export function Markdown(
   })
 
   onCleanup(() => {
-    dead = true
-    run += 1
     if (copyCleanup) copyCleanup()
   })
 

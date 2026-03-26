@@ -39,6 +39,7 @@ import { createRateLimiter } from "./rateLimiter"
 import { createDataDumper } from "./dataDumper"
 import { createTrialLimiter } from "./trialLimiter"
 import { createStickyTracker } from "./stickyProviderTracker"
+import { relay } from "./stream"
 import { LiteData } from "@opencode-ai/console-core/lite.js"
 import { Resource } from "@opencode-ai/console-resource"
 import { i18n, type Key } from "~/i18n"
@@ -254,80 +255,41 @@ export async function handler(
     const streamConverter = createStreamPartConverter(providerInfo.format, opts.format)
     const usageParser = providerInfo.createUsageParser()
     const binaryDecoder = providerInfo.createBinaryStreamDecoder()
-    const stream = new ReadableStream({
-      start(c) {
-        const reader = res.body?.getReader()
-        const decoder = new TextDecoder()
-        const encoder = new TextEncoder()
-
-        let buffer = ""
-        let responseLength = 0
-
-        function pump(): Promise<void> {
-          return (
-            reader?.read().then(async ({ done, value: rawValue }) => {
-              if (done) {
-                logger.metric({
-                  response_length: responseLength,
-                  "timestamp.last_byte": Date.now(),
-                })
-                dataDumper?.flush()
-                await rateLimiter?.track()
-                const usage = usageParser.retrieve()
-                if (usage) {
-                  const usageInfo = providerInfo.normalizeUsage(usage)
-                  const costInfo = calculateCost(modelInfo, usageInfo)
-                  await trialLimiter?.track(usageInfo)
-                  await trackUsage(sessionId, billingSource, authInfo, modelInfo, providerInfo, usageInfo, costInfo)
-                  await reload(billingSource, authInfo, costInfo)
-                  const cost = calculateOccurredCost(billingSource, costInfo)
-                  c.enqueue(encoder.encode(buildCostChunk(opts.format, cost)))
-                }
-                c.close()
-                return
-              }
-
-              if (responseLength === 0) {
-                const now = Date.now()
-                logger.metric({
-                  time_to_first_byte: now - startTimestamp,
-                  "timestamp.first_byte": now,
-                })
-              }
-
-              const value = binaryDecoder ? binaryDecoder(rawValue) : rawValue
-              if (!value) return
-
-              responseLength += value.length
-              buffer += decoder.decode(value, { stream: true })
-              dataDumper?.provideStream(buffer)
-
-              const parts = buffer.split(providerInfo.streamSeparator)
-              buffer = parts.pop() ?? ""
-
-              for (let part of parts) {
-                logger.debug("PART: " + part)
-
-                part = part.trim()
-                usageParser.parse(part)
-
-                if (providerInfo.format !== opts.format) {
-                  part = streamConverter(part)
-                  c.enqueue(encoder.encode(part + "\n\n"))
-                }
-              }
-
-              if (providerInfo.format === opts.format) {
-                c.enqueue(value)
-              }
-
-              return pump()
-            }) || Promise.resolve()
-          )
-        }
-
-        return pump()
+    const metric = (values: Record<string, unknown>) =>
+      logger.metric({
+        request: requestId,
+        session: sessionId,
+        client: ocClient,
+        provider: providerInfo.id,
+        model: modelInfo.id,
+        ...values,
+      })
+    const stream = relay({
+      body: res.body,
+      separator: providerInfo.streamSeparator,
+      signal: input.request.signal,
+      start: startTimestamp,
+      same: providerInfo.format === opts.format,
+      binary: binaryDecoder,
+      parse: (part) => {
+        logger.debug("PART: " + part)
+        usageParser.parse(part)
       },
+      convert: streamConverter,
+      tail: async () => {
+        await rateLimiter?.track()
+        const usage = usageParser.retrieve()
+        if (!usage) return
+        const usageInfo = providerInfo.normalizeUsage(usage)
+        const costInfo = calculateCost(modelInfo, usageInfo)
+        await trialLimiter?.track(usageInfo)
+        await trackUsage(sessionId, billingSource, authInfo, modelInfo, providerInfo, usageInfo, costInfo)
+        await reload(billingSource, authInfo, costInfo)
+        const cost = calculateOccurredCost(billingSource, costInfo)
+        return buildCostChunk(opts.format, cost)
+      },
+      metric,
+      dump: dataDumper,
     })
     return new Response(stream, {
       status: resStatus,

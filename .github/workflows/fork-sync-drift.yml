@@ -1,0 +1,92 @@
+name: fork-sync-drift
+
+on:
+  workflow_run:
+    workflows:
+      - fork-sync
+    types:
+      - completed
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: fork-sync-drift
+  cancel-in-progress: false
+
+jobs:
+  report:
+    if: github.repository_owner == 'EldarBorge' && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ISSUE_TITLE: Fork sync patch drift detected
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+      RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+      RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+      RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+    steps:
+      - name: Find existing drift issue
+        id: find
+        run: |
+          issue_json="$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state all \
+            --search "\"$ISSUE_TITLE\" in:title" \
+            --json number,title,state \
+            --limit 20)"
+          issue_number="$(printf '%s' "$issue_json" | jq -r --arg title "$ISSUE_TITLE" 'map(select(.title == $title))[0].number // empty')"
+          issue_state="$(printf '%s' "$issue_json" | jq -r --arg title "$ISSUE_TITLE" 'map(select(.title == $title))[0].state // empty')"
+          printf 'issue_number=%s\n' "$issue_number" >> "$GITHUB_OUTPUT"
+          printf 'issue_state=%s\n' "$issue_state" >> "$GITHUB_OUTPUT"
+
+      - name: Open or refresh drift issue
+        if: env.RUN_CONCLUSION == 'failure'
+        env:
+          ISSUE_NUMBER: ${{ steps.find.outputs.issue_number }}
+          ISSUE_STATE: ${{ steps.find.outputs.issue_state }}
+        run: |
+          body_file="$RUNNER_TEMP/fork-sync-drift.md"
+          cat >"$body_file" <<EOF
+          The automated \`fork-sync\` workflow failed while replaying the local patch queue onto upstream OpenCode.
+
+          Latest failed run:
+          - [fork-sync #${RUN_NUMBER}.${RUN_ATTEMPT}](${RUN_URL})
+          - conclusion: \`${RUN_CONCLUSION}\`
+          - branch: \`${RUN_BRANCH}\`
+          - head SHA: \`${RUN_SHA}\`
+
+          This usually means one or more commits on \`fork-patches\` no longer cherry-pick cleanly onto upstream \`dev\` or the latest upstream release tag.
+
+          Expected follow-up:
+          - inspect the failed workflow logs
+          - refresh the patch queue against upstream
+          - rerun \`fork-sync\`
+
+          <!-- fork-sync-drift-issue -->
+          EOF
+
+          if [ -n "$ISSUE_NUMBER" ]; then
+            if [ "$ISSUE_STATE" = "CLOSED" ]; then
+              gh issue reopen "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY"
+            fi
+            gh issue edit "$ISSUE_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$ISSUE_TITLE" \
+              --body-file "$body_file"
+          else
+            gh issue create \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$ISSUE_TITLE" \
+              --body-file "$body_file"
+          fi
+
+      - name: Close resolved drift issue
+        if: env.RUN_CONCLUSION == 'success' && steps.find.outputs.issue_number != '' && steps.find.outputs.issue_state == 'OPEN'
+        run: |
+          gh issue close "${{ steps.find.outputs.issue_number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --comment "Closed automatically after [fork-sync #${RUN_NUMBER}.${RUN_ATTEMPT}](${RUN_URL}) completed successfully."

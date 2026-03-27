@@ -43,6 +43,8 @@ GitHub Actions keeps this fork current:
 - rebuild `main` from upstream `dev` plus the patch queue
 - rebuild `stable` from the latest upstream release tag plus the same patch queue
 - create or update the matching `vX.Y.Z-local.1` GitHub release
+- open or refresh a drift issue when the patch queue stops applying cleanly
+- close that drift issue again after a later successful sync
 
 If the patch queue stops applying cleanly, the sync job fails instead of silently drifting.
 
